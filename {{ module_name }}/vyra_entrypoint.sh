@@ -320,8 +320,15 @@ echo "===================================="
 
 # =============================================================================
 # Setup interfaces (always runs - proto files and config are needed in all modes)
+# Supports both Python modules (setup_interfaces.py) and Rust modules (.sh)
 # =============================================================================
-python3 tools/setup_interfaces.py
+if [ -f "tools/setup_interfaces.py" ]; then
+    python3 tools/setup_interfaces.py
+elif [ -f "tools/setup_interfaces.sh" ]; then
+    bash tools/setup_interfaces.sh
+else
+    echo "⚠️ No setup_interfaces script found in tools/, skipping"
+fi
 
 # =============================================================================
 # SLIM Mode: Write config and proto interfaces to NFS
@@ -887,6 +894,9 @@ fi
 if [ -f "/etc/supervisor/conf.d/supervisord.conf" ]; then
     echo "=== STARTING SUPERVISORD ==="
     exec /usr/bin/supervisord -c /etc/supervisor/conf.d/supervisord.conf -n
+elif [ -f "/workspace/config/supervisord.conf" ]; then
+    echo "=== STARTING SUPERVISORD (workspace/config) ==="
+    exec /usr/bin/supervisord -c /workspace/config/supervisord.conf -n
 elif [ -f "/workspace/supervisord.conf" ]; then
     echo "=== STARTING SUPERVISORD (Workspace) ==="
     exec /usr/bin/supervisord -c /workspace/supervisord.conf -n

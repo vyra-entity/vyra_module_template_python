@@ -3,15 +3,15 @@
 # VYRA Module Dockerfile - Optimized Multi-Stage Build
 # Module: ${MODULE_NAME}
 # ==============================================================================
-# Local Development: Uses vyra_base_image:development/production (built locally)
+# Local Development: Uses vyra_image_python_slim:development/production (built locally)
 # CI/CD Production: Uses ghcr.io/vyra-entity/vyra_framework:development/slim
 # ==============================================================================
 
 # Base image configuration (override with --build-arg)
 # Development (VYRA_DEV_MODE=true):  Uses full-development (includes Node.js for Vite)
 # Production (VYRA_DEV_MODE=false):  Uses full-production (minimal runtime)
-ARG BUILDER_BASE_IMAGE=vyra_base_image:development
-ARG RUNTIME_BASE_IMAGE=vyra_base_image:production
+ARG BUILDER_BASE_IMAGE=vyra_image_python_slim:development
+ARG RUNTIME_BASE_IMAGE=vyra_image_python_slim:production
 
 # =============================================================================
 # Stage 1: Builder - Build ROS2 packages and frontend

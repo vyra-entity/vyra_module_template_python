@@ -17,7 +17,7 @@
       />
     </Transition>
 
-    <!-- Right-edge strip: one widget per visible pocket -->
+    <!-- Right-edge strip: one widget per visible pocket (tabs only, no popups) -->
     <div
       class="sdp-strip"
       :class="{ 'sdp-strip--dragging': isStripDragging }"
@@ -48,57 +48,61 @@
           <i :class="pocket.icon" class="sdp-tab-icon" aria-hidden="true" />
           <span class="sdp-tab-label">{% raw %}{{ pocket.title }}{% endraw %}</span>
         </button>
-
-        <!-- Popup panel — appears to the left of the strip -->
-        <Transition name="sdp-popup">
-          <div
-            v-if="pocket.isOpen"
-            class="sdp-popup"
-            :class="{ 'sdp-popup--dragging': isDragging(pocket.id) }"
-            :style="popupStyle(pocket.id)"
-            role="dialog"
-            :aria-label="pocket.title"
-            @click.stop
-          >
-            <div
-              class="sdp-popup-header"
-              @mousedown.prevent="startDrag($event, pocket.id)"
-            >
-              <i :class="pocket.icon" class="sdp-popup-header-icon" aria-hidden="true" />
-              <span class="sdp-popup-title">{% raw %}{{ pocket.title }}{% endraw %}</span>
-              <div class="sdp-popup-header-actions">
-                <button
-                  v-if="pocket.isPinnable"
-                  class="sdp-icon-btn"
-                  :class="{ 'sdp-icon-btn--active': pocket.isPinned }"
-                  @click.stop="pocket.isPinned ? sdpStore.unpinPocket(pocket.id) : sdpStore.pinPocket(pocket.id)"
-                  :title="pocket.isPinned ? 'Floating (unpin)' : 'Pinned (pin)'"
-                  :aria-label="pocket.isPinned ? 'Unpin panel' : 'Pin panel open'"
-                >
-                  <i :class="pocket.isPinned ? 'pi pi-lock' : 'pi pi-lock-open'" aria-hidden="true" />
-                </button>
-                <button
-                  class="sdp-icon-btn"
-                  @click.stop="closePocket(pocket)"
-                  title="Schließen"
-                  aria-label="Panel schließen"
-                >
-                  <i class="pi pi-times" aria-hidden="true" />
-                </button>
-              </div>
-            </div>
-            <div class="sdp-popup-body">
-              <component
-                :is="pocket.component"
-                :pluginApi="pluginApi"
-                :sdpApi="sdpStore.getPocketApi(pocket.id)"
-              />
-            </div>
-            <div class="sdp-popup-footer" />
-          </div>
-        </Transition>
       </div>
     </div>
+
+    <!-- Popups rendered OUTSIDE the strip so they are not affected by the strip's
+         CSS transform. Each popup uses position:fixed with absolute viewport
+         coordinates, completely decoupled from widget movement. -->
+    <template v-for="pocket in visiblePockets" :key="pocket.id + '-popup'">
+      <Transition name="sdp-popup">
+        <div
+          v-if="pocket.isOpen"
+          class="sdp-popup"
+          :class="{ 'sdp-popup--dragging': isDragging(pocket.id) }"
+          :style="popupStyle(pocket.id)"
+          role="dialog"
+          :aria-label="pocket.title"
+          @click.stop
+        >
+          <div
+            class="sdp-popup-header"
+            @mousedown.prevent="startDrag($event, pocket.id)"
+          >
+            <i :class="pocket.icon" class="sdp-popup-header-icon" aria-hidden="true" />
+            <span class="sdp-popup-title">{% raw %}{{ pocket.title }}{% endraw %}</span>
+            <div class="sdp-popup-header-actions">
+              <button
+                v-if="pocket.isPinnable"
+                class="sdp-icon-btn"
+                :class="{ 'sdp-icon-btn--active': pocket.isPinned }"
+                @click.stop="pocket.isPinned ? sdpStore.unpinPocket(pocket.id) : sdpStore.pinPocket(pocket.id)"
+                :title="pocket.isPinned ? 'Floating (unpin)' : 'Pinned (pin)'"
+                :aria-label="pocket.isPinned ? 'Unpin panel' : 'Pin panel open'"
+              >
+                <i :class="pocket.isPinned ? 'pi pi-lock' : 'pi pi-lock-open'" aria-hidden="true" />
+              </button>
+              <button
+                class="sdp-icon-btn"
+                @click.stop="closePocket(pocket)"
+                title="Schließen"
+                aria-label="Panel schließen"
+              >
+                <i class="pi pi-times" aria-hidden="true" />
+              </button>
+            </div>
+          </div>
+          <div class="sdp-popup-body">
+            <component
+              :is="pocket.component"
+              :pluginApi="pluginApi"
+              :sdpApi="sdpStore.getPocketApi(pocket.id)"
+            />
+          </div>
+          <div class="sdp-popup-footer" />
+        </div>
+      </Transition>
+    </template>
 
     <!-- Floating drop proxy shown while dragging a widget left for detached popup placement. -->
     <div
@@ -113,7 +117,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, inject, ref, watch } from 'vue'
+import { computed, inject, nextTick, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { useSideDockPopupStore } from '../../store/sideDockPopup'
 import type { SdpPocket } from '../../store/sideDockPopup'
@@ -123,7 +127,7 @@ const sdpStore = useSideDockPopupStore()
 const route = useRoute()
 const pluginApi = inject(PLUGIN_API_INJECTION_KEY, undefined)
 const activeContext = computed(() => String(route.name ?? route.path))
-const POPUP_OFFSETS_STORAGE_KEY = 'sdp-popup-drag-offsets-v1'
+const POPUP_POS_STORAGE_KEY = 'sdp-popup-positions-v2'
 const POPUP_WIDTH_PX = 300
 const POPUP_RIGHT_PX = 130
 const DROP_PROXY_SIZE_PX = 44
@@ -150,13 +154,16 @@ const hasUnpinnedOpen = computed(() =>
 )
 
 // ── Drag state ──────────────────────────────────────────────────────────────
-/** Per-pocket accumulated drag offset (x = horizontal, y = vertical). */
-const dragOffsets = ref<Record<string, { x: number; y: number }>>(loadDragOffsets())
+/**
+ * Per-pocket popup position as absolute viewport coordinates (px).
+ * Decoupled from the widget position — popups do NOT move when the strip moves.
+ */
+const popupPos = ref<Record<string, { x: number; y: number }>>(loadPopupPositions())
 
-/** Restore persisted popup drag offsets from localStorage. */
-function loadDragOffsets(): Record<string, { x: number; y: number }> {
+/** Restore persisted popup positions from localStorage. */
+function loadPopupPositions(): Record<string, { x: number; y: number }> {
   try {
-    const raw = localStorage.getItem(POPUP_OFFSETS_STORAGE_KEY)
+    const raw = localStorage.getItem(POPUP_POS_STORAGE_KEY)
     if (!raw) return {}
     const parsed: unknown = JSON.parse(raw)
     if (!parsed || typeof parsed !== 'object') return {}
@@ -167,6 +174,9 @@ function loadDragOffsets(): Record<string, { x: number; y: number }> {
       const x = Number((val as { x?: unknown }).x)
       const y = Number((val as { y?: unknown }).y)
       if (!Number.isFinite(x) || !Number.isFinite(y)) continue
+      // Discard positions that are completely off-screen
+      if (x < -POPUP_WIDTH_PX || x > window.innerWidth) continue
+      if (y < -60 || y > window.innerHeight) continue
       out[id] = { x, y }
     }
     return out
@@ -176,11 +186,37 @@ function loadDragOffsets(): Record<string, { x: number; y: number }> {
 }
 
 watch(
-  dragOffsets,
-  (offsets) => {
-    localStorage.setItem(POPUP_OFFSETS_STORAGE_KEY, JSON.stringify(offsets))
+  popupPos,
+  (positions) => {
+    localStorage.setItem(POPUP_POS_STORAGE_KEY, JSON.stringify(positions))
   },
   { deep: true },
+)
+
+/**
+ * Compute the initial popup viewport position anchored to the widget tab.
+ * Called the first time a pocket opens (or when no saved position exists).
+ */
+function initPopupPosition(id: string): void {
+  const widgetEl = getWidgetElement(id)
+  if (!widgetEl) return
+  const rect = widgetEl.getBoundingClientRect()
+  popupPos.value[id] = {
+    x: rect.right - POPUP_RIGHT_PX - POPUP_WIDTH_PX,
+    y: clamp(rect.top, 12, window.innerHeight - 120),
+  }
+}
+
+/** Auto-initialize position for newly opened pockets that have no saved position. */
+watch(
+  () => sdpStore.pockets.filter((p) => p.isOpen).map((p) => p.id),
+  (openIds) => {
+    for (const id of openIds) {
+      if (!popupPos.value[id]) {
+        nextTick(() => initPopupPosition(id))
+      }
+    }
+  },
 )
 
 /** ID of the pocket currently being dragged, or null. */
@@ -188,9 +224,6 @@ const draggingId = ref<string | null>(null)
 
 /** True while dragging the SDP widget strip (tab drag). */
 const isStripDragging = ref(false)
-
-/** Vertical compensation so open popups do not move when strip moves. */
-const stripDragCompensationY = ref(0)
 
 /** Pocket ID for which the next click should be ignored after dragging. */
 const suppressClickPocketId = ref<string | null>(null)
@@ -215,14 +248,15 @@ function isDragging(id: string): boolean {
   return draggingId.value === id
 }
 
-/** Inline style for the popup — applies accumulated drag transform. */
+/**
+ * Inline style for the popup.
+ * Uses absolute viewport coordinates (position: fixed) so the popup is fully
+ * decoupled from the strip/widget position.
+ */
 function popupStyle(id: string): Record<string, string> {
-  const off = dragOffsets.value[id]
-  const baseX = off?.x ?? 0
-  const baseY = off?.y ?? 0
-  const y = baseY + stripDragCompensationY.value
-  if (baseX === 0 && y === 0) return {}
-  return { transform: `translate(${baseX}px, ${y}px)` }
+  const pos = popupPos.value[id]
+  if (!pos) return {}
+  return { left: `${pos.x}px`, top: `${pos.y}px` }
 }
 
 function clamp(value: number, min: number, max: number): number {
@@ -236,33 +270,11 @@ function getWidgetElement(pocketId: string): HTMLElement | null {
   ) ?? null
 }
 
-/** Compute popup base top-left before dragOffset transform is applied. */
-function getPopupBasePosition(pocketId: string): { left: number; top: number } | null {
-  const widgetEl = getWidgetElement(pocketId)
-  if (!widgetEl) return null
-
-  const rect = widgetEl.getBoundingClientRect()
-  return {
-    left: rect.left + rect.width - POPUP_RIGHT_PX - POPUP_WIDTH_PX,
-    top: rect.top,
-  }
-}
-
-/** Position popup so its top-left follows dropped proxy coordinates (clamped in viewport). */
+/** Position popup at the coordinates where the drop proxy was released. */
 function placePopupAtDropPosition(pocketId: string, dropX: number, dropY: number): void {
-  const base = getPopupBasePosition(pocketId)
-  if (!base) return
-
-  const targetLeft = clamp(
-    dropX,
-    12,
-    window.innerWidth - POPUP_WIDTH_PX - 12,
-  )
-  const targetTop = clamp(dropY, 12, window.innerHeight - 120)
-
-  dragOffsets.value[pocketId] = {
-    x: targetLeft - base.left,
-    y: targetTop - base.top,
+  popupPos.value[pocketId] = {
+    x: clamp(dropX, 12, window.innerWidth - POPUP_WIDTH_PX - 12),
+    y: clamp(dropY, 12, window.innerHeight - 120),
   }
 }
 
@@ -282,19 +294,19 @@ function updateDropProxyPosition(clientX: number, clientY: number): void {
 
 /**
  * Initiate a drag on mousedown inside the popup header.
- * Listens on the window so the pointer can move outside the panel.
+ * Moves the popup by updating its absolute viewport position directly.
  */
 function startDrag(e: MouseEvent, id: string): void {
   const startX = e.clientX
   const startY = e.clientY
-  const init = dragOffsets.value[id] ?? { x: 0, y: 0 }
+  const initPos = { ...(popupPos.value[id] ?? { x: 0, y: 0 }) }
 
   draggingId.value = id
 
   const onMove = (ev: MouseEvent) => {
-    dragOffsets.value[id] = {
-      x: init.x + (ev.clientX - startX),
-      y: init.y + (ev.clientY - startY),
+    popupPos.value[id] = {
+      x: initPos.x + (ev.clientX - startX),
+      y: initPos.y + (ev.clientY - startY),
     }
   }
 
@@ -347,6 +359,7 @@ function onTabClick(event: MouseEvent, pocket: SdpPocket): void {
 /**
  * Dragging a widget moves the complete strip on Y.
  * Dragging left spawns a detached drop proxy; releasing opens popup at that spot.
+ * Popups are position:fixed and fully decoupled — they do NOT move when the strip moves.
  */
 function startWidgetDrag(e: MouseEvent, pocket: SdpPocket): void {
   if (e.button !== 0) return
@@ -354,9 +367,6 @@ function startWidgetDrag(e: MouseEvent, pocket: SdpPocket): void {
   const startX = e.clientX
   const startY = e.clientY
   const initOffset = sdpStore.stripYOffset
-  const openPocketIdsAtDragStart = new Set(
-    sdpStore.pockets.filter((p) => p.isOpen).map((p) => p.id),
-  )
   let moved = false
   let detachedForDrop = false
 
@@ -374,11 +384,8 @@ function startWidgetDrag(e: MouseEvent, pocket: SdpPocket): void {
     if (moved && !detachedForDrop) {
       const { minOffset, maxOffset } = getStripOffsetBounds()
       const raw = initOffset + dy
-      const clamped = Math.max(minOffset, Math.min(maxOffset, raw))
-      sdpStore.stripYOffset = clamped
-
-      // Counter-shift popups so they visually stay at their screen position.
-      stripDragCompensationY.value = initOffset - clamped
+      sdpStore.stripYOffset = Math.max(minOffset, Math.min(maxOffset, raw))
+      // Popups are position:fixed — no compensation needed
     }
 
     if (!detachedForDrop && startX - ev.clientX >= DROP_TRIGGER_LEFT_PX) {
@@ -398,14 +405,6 @@ function startWidgetDrag(e: MouseEvent, pocket: SdpPocket): void {
     window.removeEventListener('mousemove', onMove)
     window.removeEventListener('mouseup', onUp)
 
-    const finalCompensationY = stripDragCompensationY.value
-    if (finalCompensationY !== 0) {
-      for (const id of openPocketIdsAtDragStart) {
-        const curr = dragOffsets.value[id] ?? { x: 0, y: 0 }
-        dragOffsets.value[id] = { x: curr.x, y: curr.y + finalCompensationY }
-      }
-    }
-
     if (detachedForDrop && dropProxy.value.active && dropProxy.value.pocketId === pocket.id) {
       sdpStore.openPocket(pocket.id)
       placePopupAtDropPosition(pocket.id, dropProxy.value.x, dropProxy.value.y)
@@ -415,7 +414,6 @@ function startWidgetDrag(e: MouseEvent, pocket: SdpPocket): void {
     dropProxy.value.pocketId = null
 
     isStripDragging.value = false
-    stripDragCompensationY.value = 0
     document.body.style.cursor = ''
 
     if (moved || detachedForDrop) {
@@ -616,10 +614,8 @@ function tabStyle(pocket: SdpPocket): Record<string, string> {
    Popup panel — appears to the left of the tab
 ──────────────────────────────────────────────── */
 .sdp-popup {
-  position: absolute;
-  /* Double the original gap: tab width (42px) × 2 + 2px ≈ 86px */
-  right: 130px;
-  top: 0;
+  position: fixed;
+  /* top and left are set via inline style (absolute viewport coordinates) */
   width: 300px;
   max-height: min(420px, 80vh);
   display: flex;

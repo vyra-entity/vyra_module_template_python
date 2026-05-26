@@ -1,0 +1,174 @@
+name: CI
+
+on:
+  push:
+    branches: ["main", "develop"]
+  pull_request:
+    branches: ["main", "develop"]
+  workflow_dispatch:
+
+env:
+  PYTHON_VERSION: "3.10"
+
+jobs:
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # 1. Code Formatting & Linting
+  # ─────────────────────────────────────────────────────────────────────────────
+  lint:
+    name: Lint & Format
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ '{{' }} env.PYTHON_VERSION {{ '}}' }}
+
+      - name: Install Poetry
+        uses: snok/install-poetry@v1
+        with:
+          virtualenvs-create: true
+          virtualenvs-in-project: true
+
+      - name: Cache virtualenv
+        uses: actions/cache@v4
+        with:
+          path: .venv
+          key: ${{ '{{' }} runner.os {{ '}}' }}-venv-${{ '{{' }} hashFiles('**/pyproject.toml') {{ '}}' }}
+          restore-keys: ${{ '{{' }} runner.os {{ '}}' }}-venv-
+
+      - name: Install dependencies
+        run: poetry install --no-interaction --with dev
+
+      - name: Check code formatting (ruff format)
+        run: poetry run ruff format --check .
+
+      - name: Lint code (ruff check)
+        run: poetry run ruff check .
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # 2. Compile / Type Check (mypy)
+  # ─────────────────────────────────────────────────────────────────────────────
+  typecheck:
+    name: Type Check (mypy)
+    runs-on: ubuntu-latest
+    needs: lint
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ '{{' }} env.PYTHON_VERSION {{ '}}' }}
+
+      - name: Install Poetry
+        uses: snok/install-poetry@v1
+        with:
+          virtualenvs-create: true
+          virtualenvs-in-project: true
+
+      - name: Cache virtualenv
+        uses: actions/cache@v4
+        with:
+          path: .venv
+          key: ${{ '{{' }} runner.os {{ '}}' }}-venv-${{ '{{' }} hashFiles('**/pyproject.toml') {{ '}}' }}
+          restore-keys: ${{ '{{' }} runner.os {{ '}}' }}-venv-
+
+      - name: Install dependencies
+        run: poetry install --no-interaction --with dev
+
+      - name: Type check (mypy)
+        run: poetry run mypy src/
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # 3. Static Code Analysis & Security Scan + Dependency Check
+  # ─────────────────────────────────────────────────────────────────────────────
+  security:
+    name: Security & Dependency Scan
+    runs-on: ubuntu-latest
+    needs: lint
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ '{{' }} env.PYTHON_VERSION {{ '}}' }}
+
+      - name: Install Poetry
+        uses: snok/install-poetry@v1
+        with:
+          virtualenvs-create: true
+          virtualenvs-in-project: true
+
+      - name: Cache virtualenv
+        uses: actions/cache@v4
+        with:
+          path: .venv
+          key: ${{ '{{' }} runner.os {{ '}}' }}-venv-${{ '{{' }} hashFiles('**/pyproject.toml') {{ '}}' }}
+          restore-keys: ${{ '{{' }} runner.os {{ '}}' }}-venv-
+
+      - name: Install dependencies
+        run: poetry install --no-interaction --with dev
+
+      - name: Static security analysis (bandit)
+        run: poetry run bandit -r src/ -ll
+
+      - name: Dependency vulnerability check (pip-audit)
+        run: poetry run pip-audit
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # 4. Automated Tests & Code Coverage
+  # ─────────────────────────────────────────────────────────────────────────────
+  test:
+    name: Unit Tests & Coverage
+    runs-on: ubuntu-latest
+    needs: lint
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ '{{' }} env.PYTHON_VERSION {{ '}}' }}
+
+      - name: Install Poetry
+        uses: snok/install-poetry@v1
+        with:
+          virtualenvs-create: true
+          virtualenvs-in-project: true
+
+      - name: Cache virtualenv
+        uses: actions/cache@v4
+        with:
+          path: .venv
+          key: ${{ '{{' }} runner.os {{ '}}' }}-venv-${{ '{{' }} hashFiles('**/pyproject.toml') {{ '}}' }}
+          restore-keys: ${{ '{{' }} runner.os {{ '}}' }}-venv-
+
+      - name: Install dependencies
+        run: poetry install --no-interaction --with dev
+
+      - name: Run unit tests with coverage
+        run: |
+          poetry run pytest -m unit \
+            --cov=src/{{ module_name }}/{{ module_name }} \
+            --cov-report=xml:coverage.xml \
+            --cov-report=html:htmlcov \
+            --cov-report=term-missing:skip-covered \
+            --cov-fail-under=10
+
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: |
+            coverage.xml
+            htmlcov/
+          retention-days: 7
