@@ -23,7 +23,7 @@ fi
 # Warte kurz für vollständige Installation
 # sleep 2
 
-chmod 777 .env
+[ -f .env ] && chmod 777 .env
 
 # =============================================================================
 
@@ -36,7 +36,7 @@ echo "=== SETTING UP ENVIRONMENT VARIABLES ==="
 # This allows module name to be available for ENV variable setup
 MODULE_DATA_FILE=".module/module_data.yaml"
 if [ -f "$MODULE_DATA_FILE" ]; then
-    MODULE_NAME=$(grep "^name:" "$MODULE_DATA_FILE" | sed 's/^name:[[:space:]]*//')
+    MODULE_NAME=$(grep "^name:" "$MODULE_DATA_FILE" | sed 's/^name:[[:space:]]*//' | tr -d '"' | tr -d "'")
     if [ -n "$MODULE_NAME" ]; then
         echo "✅ Using name from module_data.yaml: $MODULE_NAME"
         export MODULE_NAME  # Export as environment variable for ROS2 processes
@@ -87,7 +87,9 @@ fi
 
 # Load environment variables from .env (filter comments and empty lines)
 # MODULE_NAME is now already exported, but this will reload it from .env
-export $(grep -v '^#' .env | sed 's/#.*$//' | grep -v '^$' | xargs)
+if [ -f .env ]; then
+    export $(grep -v '^#' .env | sed 's/#.*$//' | grep -v '^$' | xargs)
+fi
 
 # Debug: Show loaded environment variables
 echo "=== Loaded Environment Variables ==="
@@ -175,15 +177,15 @@ mkdir -p /workspace/log/core
 mkdir -p /workspace/log/uvicorn
 
 # Set write permissions for all users (ROS2 logging needs this)
-chmod -R 777 /workspace/log/
+chmod -R 777 /workspace/log/ 2>/dev/null || true
 
 # Ensure nginx temp directories are writable by vyrauser
 # (nginx creates /var/lib/nginx/body etc. at runtime; if root-owned it fails)
-mkdir -p /var/lib/nginx/body /var/lib/nginx/fastcgi /var/lib/nginx/proxy /var/lib/nginx/scgi /var/lib/nginx/uwsgi
+mkdir -p /var/lib/nginx/body /var/lib/nginx/fastcgi /var/lib/nginx/proxy /var/lib/nginx/scgi /var/lib/nginx/uwsgi 2>/dev/null || true
 chown -R vyrauser:vyrauser /var/lib/nginx 2>/dev/null || true
-mkdir -p /var/log/nginx
+mkdir -p /var/log/nginx 2>/dev/null || true
 chown -R vyrauser:vyrauser /var/log/nginx 2>/dev/null || true
-mkdir -p /run/nginx
+mkdir -p /run/nginx 2>/dev/null || true
 chown -R vyrauser:vyrauser /run/nginx 2>/dev/null || true
 
 # Clean up old thread log files if cleanup script exists
@@ -348,7 +350,9 @@ if [ "${VYRA_SLIM:-false}" = "true" ]; then
         INTERFACE_SRC_DIR="/workspace/src/${MODULE_NAME}_interfaces"
         NFS_MODULE_DIR="$NFS_VOLUME_PATH/${MODULE_NAME}_${INSTANCE_ID}_interfaces"
         NFS_CONFIG_DIR="$NFS_MODULE_DIR/config"
-        mkdir -p "$NFS_CONFIG_DIR"
+        mkdir -p "$NFS_CONFIG_DIR" 2>/dev/null || { echo "⚠️  SLIM: Cannot write to NFS at $NFS_MODULE_DIR (read-only or wrong path), skipping NFS write"; NFS_WRITE_OK=false; }
+        NFS_WRITE_OK="${NFS_WRITE_OK:-true}"
+        if [ "$NFS_WRITE_OK" = "true" ]; then
         if [ -d "$INTERFACE_SRC_DIR/config" ]; then
             cp -r "$INTERFACE_SRC_DIR/config"/.  "$NFS_CONFIG_DIR"/
             echo "✅ SLIM: config/ deployed to NFS"
@@ -361,6 +365,7 @@ if [ "${VYRA_SLIM:-false}" = "true" ]; then
             fi
         done
         echo "✅ SLIM: NFS write complete at $NFS_MODULE_DIR"
+        fi
     else
         echo "ℹ️  SLIM MODE: NFS volume not found at $NFS_VOLUME_PATH, skipping NFS write"
     fi
@@ -417,8 +422,13 @@ if [ -d "$NFS_VOLUME_PATH" ]; then
     NFS_SRV_DIR="$NFS_MODULE_DIR/srv"
     NFS_ACTION_DIR="$NFS_MODULE_DIR/action"
 
-    mkdir -p "$NFS_ROS_DIR" "$NFS_CONFIG_DIR" "$NFS_MSG_DIR" "$NFS_SRV_DIR" "$NFS_ACTION_DIR"
+    mkdir -p "$NFS_ROS_DIR" "$NFS_CONFIG_DIR" "$NFS_MSG_DIR" "$NFS_SRV_DIR" "$NFS_ACTION_DIR" 2>/dev/null || {
+        echo "⚠️  Cannot write to NFS at $NFS_MODULE_DIR (read-only or wrong path), skipping NFS interface management"
+        NFS_WRITE_OK=false
+    }
+    NFS_WRITE_OK="${NFS_WRITE_OK:-true}"
 
+    if [ "$NFS_WRITE_OK" = "true" ]; then
     # ------------------------------------------------------------------
     # Determine whether an update is needed (comprehensive check)
     # Checks: first-time, config file count, interface file counts, checksums
@@ -575,6 +585,7 @@ SETUPEOF
 
         echo "✅ NFS interfaces fully updated at $NFS_MODULE_DIR"
     fi
+    fi  # NFS_WRITE_OK
 
     # ------------------------------------------------------------------
     # Source ROS2 overlays from all modules on NFS
@@ -607,7 +618,7 @@ SETUPEOF
             if [ -d "$gen_dir" ]; then
                 # Add the parent (msg/ or srv/) so imports like `from _gen import X_pb2` work,
                 # and also the _gen dir itself for direct imports.
-                export PYTHONPATH="$nfs_iface_dir/$sub:$gen_dir:$PYTHONPATH"
+                export PYTHONPATH="$nfs_iface_dir/$sub:$gen_dir:${PYTHONPATH:-}"
                 PROTO_LOADED=$((PROTO_LOADED + 1))
             fi
         done
@@ -625,7 +636,7 @@ else
     for sub in msg srv; do
         local_gen="/workspace/src/${MODULE_NAME}_interfaces/$sub/_gen"
         if [ -d "$local_gen" ]; then
-            export PYTHONPATH="/workspace/src/${MODULE_NAME}_interfaces/$sub:$local_gen:$PYTHONPATH"
+            export PYTHONPATH="/workspace/src/${MODULE_NAME}_interfaces/$sub:$local_gen:${PYTHONPATH:-}"
             echo "✅ Added local $sub/_gen to PYTHONPATH"
         fi
     done
@@ -708,7 +719,7 @@ check_and_create_certificates() {
 }
 
 # Check/create backend certificates if backend webserver is enabled
-if [ "$ENABLE_BACKEND_WEBSERVER" = "true" ]; then
+if [ "${ENABLE_BACKEND_WEBSERVER:-false}" = "true" ]; then
     echo "🔐 Backend webserver enabled - checking SSL certificates..."
     
     if check_and_create_certificates "webserver"; then
@@ -722,7 +733,7 @@ else
 fi
 
 # Check/create frontend certificates if frontend webserver is enabled
-if [ "$ENABLE_FRONTEND_WEBSERVER" = "true" ]; then
+if [ "${ENABLE_FRONTEND_WEBSERVER:-false}" = "true" ]; then
     echo "🔐 Frontend webserver enabled - checking SSL certificates..."
     
     if check_and_create_certificates "frontend"; then
@@ -760,7 +771,7 @@ echo "===================================="
 echo "=== CONFIGURING SUPERVISORD SERVICES ==="
 
 # Check Development Mode
-if [ "$VYRA_DEV_MODE" = "true" ]; then
+if [ "${VYRA_DEV_MODE:-false}" = "true" ]; then
     echo "🚀 DEVELOPMENT MODE ENABLED"
 
     # Enable ROS2 Hot Reload if configured (supports both ENABLE_HOT_RELOAD and ENABLE_ROS2_HOT_RELOAD)
@@ -793,22 +804,26 @@ if [ "$VYRA_DEV_MODE" = "true" ]; then
         ENABLE_FRONTEND_WEBSERVER=false
         
         # Install npm dependencies if needed
-        if [ ! -d "/workspace/frontend/node_modules" ]; then
+        if [ ! -d "/workspace/frontend/node_modules" ] && [ -f "/workspace/frontend/package.json" ]; then
             echo "📦 Installing npm dependencies..."
             cd /workspace/frontend
             npm install
             cd /workspace
         fi
         
-        # Start Vite Dev Server in background
-        echo "🔥 Starting Vite Dev Server on port 3000..."
-        cd /workspace/frontend
-        nohup npm run dev -- --host 0.0.0.0 --port 3000 > /workspace/log/vite.log 2>&1 &
-        VITE_PID=$!
-        echo "✅ Vite Dev Server started (PID: $VITE_PID)"
-        echo "   Frontend URL: http://localhost:3000"
-        echo "   Log: /workspace/log/vite.log"
-        cd /workspace
+        # Start Vite Dev Server in background (only if package.json exists)
+        if [ -f "/workspace/frontend/package.json" ]; then
+            echo "🔥 Starting Vite Dev Server on port 3000..."
+            cd /workspace/frontend
+            nohup npm run dev -- --host 0.0.0.0 --port 3000 > /workspace/log/vite.log 2>&1 &
+            VITE_PID=$!
+            echo "✅ Vite Dev Server started (PID: $VITE_PID)"
+            echo "   Frontend URL: http://localhost:3000"
+            echo "   Log: /workspace/log/vite.log"
+            cd /workspace
+        else
+            echo "⏭️  No frontend/package.json found — skipping Vite Dev Server"
+        fi
     else
         echo "⚠️  npm not available - falling back to Nginx with pre-built frontend"
         echo "   (Set VYRA_DEV_MODE=false or use development base image for Vite hot reload)"
@@ -817,8 +832,8 @@ if [ "$VYRA_DEV_MODE" = "true" ]; then
         echo "🔧 Enabling Nginx in supervisord config..."
         
         # Replace the VYRA_DEV_MODE check to allow Nginx startup
-        sudo sed -i 's/if \[ "$VYRA_DEV_MODE" = "false" \]; then/if [ "$VYRA_DEV_MODE" = "false" ] || [ "$ENABLE_FRONTEND_WEBSERVER" = "true" ]; then/' /etc/supervisor/conf.d/supervisord.conf 2>/dev/null || \
-        sed -i 's/if \[ "$VYRA_DEV_MODE" = "false" \]; then/if [ "$VYRA_DEV_MODE" = "false" ] || [ "$ENABLE_FRONTEND_WEBSERVER" = "true" ]; then/' /workspace/supervisord.conf 2>/dev/null || true
+        sudo sed -i 's/if \[ "$VYRA_DEV_MODE" = "false" \]; then/if [ "$VYRA_DEV_MODE" = "false" ] || [ "${ENABLE_FRONTEND_WEBSERVER:-false}" = "true" ]; then/' /etc/supervisor/conf.d/supervisord.conf 2>/dev/null || \
+        sed -i 's/if \[ "$VYRA_DEV_MODE" = "false" \]; then/if [ "$VYRA_DEV_MODE" = "false" ] || [ "${ENABLE_FRONTEND_WEBSERVER:-false}" = "true" ]; then/' /workspace/supervisord.conf 2>/dev/null || true
         
         # Enable autostart
         sudo sed -i '/\[program:nginx\]/,/^\[/ s/autostart=false/autostart=true/' /etc/supervisor/conf.d/supervisord.conf 2>/dev/null || \
@@ -873,7 +888,7 @@ else
 fi
 
 # Configure Nginx (Frontend Webserver) - only in production mode
-if [ "$ENABLE_FRONTEND_WEBSERVER" = "true" ]; then
+if [ "${ENABLE_FRONTEND_WEBSERVER:-false}" = "true" ]; then
     echo "✅ Enabling Nginx (Frontend Webserver)"
     sudo sed -i '/\[program:nginx\]/,/^\[/ s/autostart=false/autostart=true/' /etc/supervisor/conf.d/supervisord.conf 2>/dev/null || \
     sed -i '/\[program:nginx\]/,/^\[/ s/autostart=false/autostart=true/' /workspace/supervisord.conf 2>/dev/null || true
@@ -882,7 +897,7 @@ else
 fi
 
 # Configure Uvicorn (Backend ASGI Server)
-if [ "$ENABLE_BACKEND_WEBSERVER" = "true" ]; then
+if [ "${ENABLE_BACKEND_WEBSERVER:-false}" = "true" ]; then
     echo "✅ Enabling Uvicorn (Backend ASGI Server)"
     sudo sed -i '/\[program:uvicorn\]/,/^\[/ s/autostart=false/autostart=true/' /etc/supervisor/conf.d/supervisord.conf 2>/dev/null || \
     sed -i '/\[program:uvicorn\]/,/^\[/ s/autostart=false/autostart=true/' /workspace/supervisord.conf 2>/dev/null || true
