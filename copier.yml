@@ -106,6 +106,7 @@ publish_to_repo_after_copy:
 
 _exclude:
   - "README.md"
+  - "CHANGELOG.md"
   - "{% if not enable_frontend %}{{ module_name }}/frontend/**{% endif %}"
   - "{% if not enable_frontend %}{{ module_name }}/config/nginx.conf{% endif %}"
   - "{% if not enable_frontend %}{{ module_name }}/src/{{ module_name }}/{{ module_name }}/backend_webserver/**{% endif %}"

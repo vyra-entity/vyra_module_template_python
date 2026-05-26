@@ -16,81 +16,153 @@
         
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: #0b111e;
             min-height: 100dvh;
         }
         
         #app {
             min-height: 100dvh;
         }
-        
-        /* Elegant Loading Screen */
+
+        /* ── Industrial Loading Screen ── */
         .vyra-loading {
             position: fixed;
-            top: 0;
-            left: 0;
+            inset: 0;
+            z-index: 9999;
+            overflow: hidden;
+            background: #0b111e;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            opacity: 1;
+            transition: opacity 0.35s ease;
+        }
+        .vyra-loading.fade-out { opacity: 0; pointer-events: none; }
+        .vl-iso {
+            position: absolute;
+            inset: 0;
             width: 100%;
             height: 100%;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+        .vl-panel {
+            position: relative;
+            z-index: 2;
             display: flex;
-            justify-content: center;
-            align-items: center;
             flex-direction: column;
-            z-index: 9999;
-            opacity: 1;
-            transition: opacity 0.5s ease;
+            align-items: center;
+            gap: 0;
+            animation: vl-rise 0.3s cubic-bezier(0.22,1,0.36,1) both;
         }
-        
-        .vyra-loading.fade-out {
-            opacity: 0;
-            pointer-events: none;
+        @keyframes vl-rise {
+            from { opacity: 0; transform: translateY(10px); }
+            to   { opacity: 1; transform: translateY(0); }
         }
-        
-        .vyra-logo {
-            width: 80px;
-            height: 80px;
-            background: white;
-            border-radius: 20px;
+        .vl-logo-wrap {
+            width: 72px;
+            height: 72px;
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 2rem;
-            margin-bottom: 2rem;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
-            animation: pulse 2s infinite;
+            border: 1px solid rgba(100,121,132,0.35);
+            background: rgba(11,17,30,0.82);
+            position: relative;
+            margin-bottom: 20px;
+            animation: vl-logo-in 0.4s 0.05s cubic-bezier(0.22,1,0.36,1) both;
         }
-        
-        .vyra-loading h1 {
-            color: white;
-            font-size: 2.5rem;
-            font-weight: 300;
-            margin-bottom: 1rem;
-            text-shadow: 0 2px 10px rgba(0,0,0,0.2);
+        @keyframes vl-logo-in {
+            from { opacity: 0; transform: scale(0.88); }
+            to   { opacity: 1; transform: scale(1); }
         }
-        
-        .vyra-loading p {
-            color: rgba(255,255,255,0.8);
-            font-size: 1.1rem;
-            margin-bottom: 3rem;
+        .vl-logo-wrap::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(to bottom, transparent 0%, rgba(100,171,200,0.18) 50%, transparent 100%);
+            transform: translateY(-100%);
+            animation: vl-scan-logo 0.5s 0.2s cubic-bezier(0.4,0,0.6,1) forwards;
         }
-        
-        .loading-spinner {
-            width: 50px;
-            height: 50px;
-            border: 3px solid rgba(255,255,255,0.3);
-            border-top: 3px solid white;
+        @keyframes vl-scan-logo {
+            from { transform: translateY(-100%); opacity: 1; }
+            to   { transform: translateY(100%);  opacity: 0; }
+        }
+        .vl-logo-wrap::before {
+            content: '';
+            position: absolute;
+            inset: -3px;
+            border: 1px solid rgba(100,171,200,0.5);
+            animation: vl-glow-pulse 1.8s 0.3s ease-in-out infinite;
+        }
+        @keyframes vl-glow-pulse {
+            0%,100% { opacity: 0.3; }
+            50%     { opacity: 0.8; }
+        }
+        .vl-wordmark {
+            margin-bottom: 22px;
+            animation: vl-fade-in 0.4s 0.15s both;
+        }
+        @keyframes vl-fade-in {
+            from { opacity: 0; } to { opacity: 1; }
+        }
+        .vl-status {
+            display: flex;
+            align-items: center;
+            gap: 7px;
+            margin-bottom: 14px;
+            animation: vl-fade-in 0.4s 0.2s both;
+        }
+        .vl-dot {
+            width: 5px;
+            height: 5px;
             border-radius: 50%;
-            animation: spin 1s linear infinite;
+            background: #5aafcf;
+            animation: vl-blink 0.7s 0.3s ease-in-out infinite alternate;
         }
-        
-        @keyframes pulse {
-            0%, 100% { transform: scale(1); }
-            50% { transform: scale(1.05); }
+        @keyframes vl-blink {
+            from { opacity: 0.25; } to { opacity: 1; }
         }
-        
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
+        .vl-status-txt {
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 10px;
+            letter-spacing: 0.18em;
+            color: rgba(160,185,200,0.7);
+            text-transform: uppercase;
+        }
+        .vl-prog-track {
+            width: 180px;
+            height: 2px;
+            background: rgba(100,121,132,0.2);
+            position: relative;
+            overflow: hidden;
+            animation: vl-fade-in 0.3s 0.1s both;
+        }
+        .vl-prog-bar {
+            position: absolute;
+            left: 0; top: 0; bottom: 0;
+            width: 0;
+            background: linear-gradient(90deg, rgba(90,175,207,0.6) 0%, #5aafcf 100%);
+            animation: vl-prog 0.95s 0.05s cubic-bezier(0.4,0,0.2,1) forwards;
+        }
+        @keyframes vl-prog {
+            from { width: 0; }
+            to   { width: 86%; }
+        }
+        .vl-scan {
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(to bottom,
+                transparent 0%,
+                rgba(90,175,207,0.04) 40%,
+                rgba(90,175,207,0.06) 50%,
+                rgba(90,175,207,0.04) 60%,
+                transparent 100%);
+            transform: translateY(-100%);
+            animation: vl-fullscan 1.1s 0.1s cubic-bezier(0.4,0,0.6,1) forwards;
+            pointer-events: none;
+            z-index: 3;
+        }
+        @keyframes vl-fullscan {
+            from { transform: translateY(-100%); }
+            to   { transform: translateY(100%); }
         }
         
         /* Fallback für wenn Vue.js nicht lädt */
@@ -142,12 +214,100 @@
 <body>
     <!-- Vue.js App Mount Point -->
     <div id="app">
-        <!-- Beautiful Loading Screen -->
+        <!-- Industrial Loading Screen -->
         <div class="vyra-loading" id="loading-screen">
-            <div class="vyra-logo">🚀</div>
-            <h1>Module Webinterface</h1>
-            <p>Loading ...</p>
-            <div class="loading-spinner"></div>
+            <svg class="vl-iso" viewBox="0 0 1440 900" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                <defs>
+                    <pattern id="iso-grid" x="0" y="0" width="80" height="46.19" patternUnits="userSpaceOnUse">
+                        <path d="M40 0 L80 23.1 L40 46.19 L0 23.1 Z" fill="none" stroke="rgba(100,121,132,0.12)" stroke-width="0.6"/>
+                    </pattern>
+                    <pattern id="iso-grid2" x="0" y="0" width="160" height="92.38" patternUnits="userSpaceOnUse">
+                        <path d="M80 0 L160 46.19 L80 92.38 L0 46.19 Z" fill="none" stroke="rgba(90,175,207,0.07)" stroke-width="0.8"/>
+                    </pattern>
+                    <radialGradient id="vl-vignette" cx="50%" cy="50%" r="70%">
+                        <stop offset="0%" stop-color="#0b111e" stop-opacity="0"/>
+                        <stop offset="100%" stop-color="#0b111e" stop-opacity="0.88"/>
+                    </radialGradient>
+                    <linearGradient id="vl-horizon" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stop-color="#0b111e"/>
+                        <stop offset="45%" stop-color="#0d1624"/>
+                        <stop offset="100%" stop-color="#0b111e"/>
+                    </linearGradient>
+                    <filter id="vl-glow">
+                        <feGaussianBlur stdDeviation="3" result="blur"/>
+                        <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+                    </filter>
+                </defs>
+                <rect width="1440" height="900" fill="url(#vl-horizon)"/>
+                <rect width="1440" height="900" fill="url(#iso-grid)"/>
+                <rect width="1440" height="900" fill="url(#iso-grid2)" opacity="0.6"/>
+                <line x1="0" y1="450" x2="1440" y2="450" stroke="rgba(90,175,207,0.08)" stroke-width="1"/>
+                <g opacity="0.55" filter="url(#vl-glow)">
+                    <polygon points="160,420 240,375 320,420 320,480 240,525 160,480" fill="#0f1a2e" stroke="rgba(90,175,207,0.25)" stroke-width="0.8"/>
+                    <polygon points="160,420 240,375 240,315 160,360" fill="#0d1828" stroke="rgba(90,175,207,0.2)" stroke-width="0.6"/>
+                    <polygon points="240,375 320,420 320,360 240,315" fill="#111e32" stroke="rgba(90,175,207,0.2)" stroke-width="0.6"/>
+                    <polygon points="300,460 360,427 420,460 420,510 360,543 300,510" fill="#0e1929" stroke="rgba(100,180,210,0.2)" stroke-width="0.7"/>
+                    <polygon points="300,460 360,427 360,377 300,410" fill="#0c1726" stroke="rgba(100,180,210,0.15)" stroke-width="0.5"/>
+                    <polygon points="360,427 420,460 420,410 360,377" fill="#101c2e" stroke="rgba(100,180,210,0.15)" stroke-width="0.5"/>
+                    <polygon points="190,360 220,343 250,360 250,400 220,417 190,400" fill="#0e1a2c" stroke="rgba(90,175,207,0.3)" stroke-width="0.7"/>
+                    <polygon points="190,360 220,343 220,303 190,320" fill="#0c1728" stroke="rgba(90,175,207,0.2)" stroke-width="0.5"/>
+                    <polygon points="220,343 250,360 250,320 220,303" fill="#111e32" stroke="rgba(90,175,207,0.2)" stroke-width="0.5"/>
+                    <circle cx="220" cy="300" r="2" fill="rgba(90,200,255,0.7)"/>
+                    <circle cx="220" cy="300" r="5" fill="rgba(90,200,255,0.15)"/>
+                </g>
+                <g opacity="0.5" filter="url(#vl-glow)">
+                    <polygon points="1120,400 1200,355 1280,400 1280,470 1200,515 1120,470" fill="#0f1a2e" stroke="rgba(90,175,207,0.22)" stroke-width="0.8"/>
+                    <polygon points="1120,400 1200,355 1200,295 1120,340" fill="#0d1828" stroke="rgba(90,175,207,0.18)" stroke-width="0.6"/>
+                    <polygon points="1200,355 1280,400 1280,340 1200,295" fill="#111e32" stroke="rgba(90,175,207,0.18)" stroke-width="0.6"/>
+                    <polygon points="1260,450 1320,420 1380,450 1380,500 1320,530 1260,500" fill="#0e1929" stroke="rgba(100,180,210,0.18)" stroke-width="0.7"/>
+                    <polygon points="1260,450 1320,420 1320,370 1260,400" fill="#0c1726" stroke="rgba(100,180,210,0.14)" stroke-width="0.5"/>
+                    <polygon points="1320,420 1380,450 1380,400 1320,370" fill="#101c2e" stroke="rgba(100,180,210,0.14)" stroke-width="0.5"/>
+                    <polygon points="1150,340 1175,326 1200,340 1200,380 1175,394 1150,380" fill="#0e1a2c" stroke="rgba(90,175,207,0.28)" stroke-width="0.7"/>
+                    <polygon points="1150,340 1175,326 1175,286 1150,300" fill="#0c1728" stroke="rgba(90,175,207,0.18)" stroke-width="0.5"/>
+                    <polygon points="1175,326 1200,340 1200,300 1175,286" fill="#111e32" stroke="rgba(90,175,207,0.18)" stroke-width="0.5"/>
+                    <circle cx="1175" cy="283" r="2" fill="rgba(90,200,255,0.65)"/>
+                    <circle cx="1175" cy="283" r="5" fill="rgba(90,200,255,0.12)"/>
+                </g>
+                <g opacity="0.3">
+                    <line x1="0" y1="500" x2="580" y2="500" stroke="rgba(90,175,207,0.5)" stroke-width="0.6" stroke-dasharray="4,8"/>
+                    <line x1="860" y1="500" x2="1440" y2="500" stroke="rgba(90,175,207,0.5)" stroke-width="0.6" stroke-dasharray="4,8"/>
+                    <line x1="0" y1="520" x2="560" y2="520" stroke="rgba(100,121,132,0.4)" stroke-width="0.5" stroke-dasharray="2,12"/>
+                    <line x1="880" y1="520" x2="1440" y2="520" stroke="rgba(100,121,132,0.4)" stroke-width="0.5" stroke-dasharray="2,12"/>
+                </g>
+                <rect width="1440" height="900" fill="url(#vl-vignette)"/>
+            </svg>
+            <div class="vl-scan"></div>
+            <div class="vl-panel">
+                <div class="vl-logo-wrap">
+                    <svg viewBox="0 0 13 13" width="36" height="36" xmlns="http://www.w3.org/2000/svg" style="fill-rule:evenodd;clip-rule:evenodd;">
+                        <path d="M6.469,0.072C10.039,0.072 12.937,2.97 12.937,6.541C12.937,10.111 10.039,13.009 6.469,13.009C2.898,13.009 0,10.111 0,6.541C0,2.97 2.898,0.072 6.469,0.072ZM1.39,3.805L11.547,3.805L6.469,12.501L1.39,3.805Z" fill="rgba(160,200,220,0.9)"/>
+                    </svg>
+                </div>
+                <div class="vl-wordmark">
+                    <svg viewBox="0 0 81 11" width="130" xmlns="http://www.w3.org/2000/svg" style="fill-rule:evenodd;clip-rule:evenodd;" aria-label="variobotic">
+                        <g>
+                            <path d="M21.119,8.87L22.705,3.158L24.078,3.158L21.721,10.781L20.522,10.781L18.171,3.158L19.543,3.158L21.119,8.87Z" fill="rgba(140,170,190,0.8)"/>
+                            <path d="M28.18,9.012L25.798,9.012L25.274,10.781L23.975,10.781L26.452,3.158L27.557,3.158L29.987,10.781L28.693,10.781L28.18,9.012ZM26.117,7.938L27.866,7.938L27.002,4.949L26.117,7.938Z" fill="rgba(140,170,190,0.8)"/>
+                            <path d="M33.602,7.807L32.324,7.807L32.324,10.781L31.068,10.781L31.068,3.158L33.476,3.158C33.868,3.161 34.228,3.211 34.558,3.307C34.887,3.403 35.172,3.546 35.414,3.736C35.654,3.927 35.841,4.165 35.974,4.451C36.106,4.737 36.173,5.073 36.173,5.456C36.173,5.715 36.139,5.949 36.071,6.16C36.003,6.372 35.907,6.563 35.785,6.734C35.663,6.905 35.517,7.055 35.346,7.184C35.175,7.313 34.986,7.423 34.78,7.514L36.393,10.718L36.393,10.781L35.053,10.781L33.602,7.807ZM32.324,6.791L33.481,6.791C33.691,6.791 33.883,6.762 34.057,6.703C34.232,6.643 34.383,6.559 34.51,6.448C34.638,6.339 34.736,6.204 34.806,6.045C34.876,5.886 34.911,5.704 34.911,5.498C34.911,5.285 34.878,5.097 34.811,4.933C34.745,4.768 34.65,4.631 34.526,4.519C34.402,4.407 34.251,4.323 34.073,4.265C33.895,4.207 33.696,4.177 33.476,4.173L32.324,4.173L32.324,6.791Z" fill="rgba(140,170,190,0.8)"/>
+                            <path d="M37.622,3.158L42.156,3.158L42.156,4.2L40.507,4.2L40.507,9.745L42.156,9.745L42.156,10.781L37.622,10.781L37.622,9.745L39.234,9.745L39.234,4.2L37.622,4.2L37.622,3.158Z" fill="rgba(140,170,190,0.8)"/>
+                            <path d="M48.672,7.461C48.672,7.912 48.614,8.344 48.499,8.758C48.384,9.171 48.212,9.536 47.983,9.852C47.755,10.168 47.468,10.419 47.124,10.606C46.781,10.792 46.379,10.886 45.917,10.886C45.46,10.886 45.062,10.792 44.724,10.603C44.386,10.415 44.104,10.163 43.878,9.847C43.653,9.531 43.484,9.167 43.37,8.755C43.257,8.343 43.201,7.912 43.201,7.461L43.201,6.488C43.201,6.188 43.226,5.894 43.276,5.608C43.327,5.322 43.402,5.052 43.501,4.799C43.601,4.546 43.725,4.312 43.873,4.098C44.022,3.883 44.196,3.699 44.397,3.545C44.597,3.392 44.824,3.271 45.078,3.184C45.331,3.097 45.609,3.053 45.912,3.053C46.373,3.053 46.775,3.147 47.119,3.336C47.463,3.524 47.751,3.776 47.981,4.092C48.211,4.408 48.384,4.774 48.499,5.189C48.614,5.605 48.672,6.038 48.672,6.488L48.672,7.461ZM47.41,6.477C47.406,6.191 47.381,5.907 47.331,5.624C47.282,5.341 47.201,5.089 47.085,4.867C46.971,4.646 46.818,4.466 46.627,4.328C46.437,4.19 46.199,4.121 45.912,4.121C45.63,4.121 45.395,4.19 45.208,4.328C45.021,4.466 44.873,4.646 44.763,4.87C44.653,5.093 44.577,5.345 44.533,5.627C44.489,5.907 44.466,6.191 44.462,6.477L44.462,7.461C44.466,7.748 44.49,8.031 44.536,8.312C44.581,8.594 44.658,8.847 44.768,9.073C44.879,9.297 45.027,9.479 45.214,9.619C45.4,9.758 45.635,9.83 45.917,9.83C46.204,9.83 46.442,9.758 46.633,9.619C46.823,9.479 46.976,9.298 47.091,9.074C47.206,8.851 47.287,8.598 47.334,8.315C47.381,8.032 47.406,7.748 47.41,7.461L47.41,6.477Z" fill="rgba(140,170,190,0.8)"/>
+                            <path d="M50.037,10.781L50.037,3.158L52.472,3.158C52.839,3.161 53.182,3.203 53.501,3.283C53.82,3.364 54.1,3.488 54.339,3.655C54.578,3.823 54.765,4.036 54.902,4.297C55.038,4.557 55.104,4.865 55.101,5.221C55.097,5.598 54.992,5.92 54.786,6.187C54.581,6.454 54.303,6.661 53.954,6.807C54.167,6.866 54.356,6.951 54.522,7.061C54.687,7.171 54.826,7.303 54.938,7.456C55.05,7.61 55.136,7.78 55.195,7.967C55.254,8.154 55.284,8.352 55.284,8.561C55.284,8.924 55.218,9.244 55.085,9.519C54.952,9.795 54.768,10.026 54.533,10.211C54.297,10.396 54.018,10.536 53.695,10.632C53.372,10.728 53.024,10.778 52.651,10.781L50.037,10.781ZM51.299,6.367L52.503,6.367C52.692,6.364 52.868,6.339 53.03,6.291C53.192,6.244 53.333,6.174 53.451,6.082C53.57,5.989 53.664,5.876 53.734,5.742C53.804,5.607 53.838,5.453 53.838,5.278C53.838,5.086 53.806,4.922 53.739,4.786C53.673,4.65 53.58,4.538 53.459,4.451C53.339,4.364 53.196,4.3 53.033,4.26C52.868,4.22 52.688,4.198 52.493,4.195L51.299,4.195L51.299,6.367ZM51.299,7.325L51.299,9.755L52.671,9.755C52.87,9.751 53.052,9.721 53.216,9.663C53.38,9.606 53.521,9.526 53.64,9.425C53.758,9.324 53.852,9.2 53.92,9.053C53.988,8.907 54.022,8.743 54.022,8.561C54.022,8.369 53.992,8.197 53.933,8.045C53.874,7.894 53.788,7.765 53.676,7.661C53.565,7.556 53.428,7.475 53.268,7.417C53.107,7.359 52.928,7.329 52.729,7.325L51.299,7.325Z" fill="rgba(140,170,190,0.8)"/>
+                            <path d="M61.781,7.461C61.781,7.912 61.723,8.344 61.608,8.758C61.493,9.171 61.321,9.536 61.092,9.852C60.864,10.168 60.577,10.419 60.233,10.606C59.89,10.792 59.487,10.886 59.027,10.886C58.569,10.886 58.171,10.792 57.832,10.603C57.494,10.415 57.212,10.163 56.987,9.847C56.762,9.531 56.593,9.167 56.479,8.755C56.366,8.343 56.309,7.912 56.309,7.461L56.309,6.488C56.309,6.188 56.334,5.894 56.385,5.608C56.435,5.322 56.511,5.052 56.61,4.799C56.71,4.546 56.834,4.312 56.982,4.098C57.13,3.883 57.305,3.699 57.505,3.545C57.706,3.392 57.933,3.271 58.186,3.184C58.439,3.097 58.718,3.053 59.022,3.053C59.482,3.053 59.885,3.147 60.228,3.336C60.572,3.524 60.859,3.776 61.089,4.092C61.32,4.408 61.493,4.774 61.608,5.189C61.723,5.605 61.781,6.038 61.781,6.488L61.781,7.461ZM60.519,6.477C60.515,6.191 60.489,5.907 60.441,5.624C60.391,5.341 60.31,5.089 60.194,4.867C60.079,4.646 59.927,4.466 59.736,4.328C59.546,4.19 59.307,4.121 59.022,4.121C58.739,4.121 58.504,4.19 58.317,4.328C58.131,4.466 57.982,4.646 57.872,4.87C57.762,5.093 57.685,5.345 57.642,5.627C57.598,5.907 57.574,6.191 57.571,6.477L57.571,7.461C57.574,7.748 57.599,8.031 57.644,8.312C57.69,8.594 57.767,8.847 57.878,9.073C57.987,9.297 58.136,9.479 58.322,9.619C58.509,9.758 58.744,9.83 59.027,9.83C59.312,9.83 59.551,9.758 59.741,9.619C59.931,9.479 60.085,9.298 60.199,9.074C60.315,8.851 60.396,8.598 60.443,8.315C60.49,8.032 60.515,7.748 60.519,7.461L60.519,6.477Z" fill="rgba(140,170,190,0.8)"/>
+                            <path d="M68.408,4.195L66.068,4.195L66.068,10.781L64.817,10.781L64.817,4.195L62.492,4.195L62.492,3.158L68.408,3.158L68.408,4.195Z" fill="rgba(140,170,190,0.8)"/>
+                            <path d="M69.614,3.158L74.148,3.158L74.148,4.2L72.499,4.2L72.499,9.745L74.148,9.745L74.148,10.781L69.614,10.781L69.614,9.745L71.226,9.745L71.226,4.2L69.614,4.2L69.614,3.158Z" fill="rgba(140,170,190,0.8)"/>
+                            <path d="M80.648,8.441C80.613,8.807 80.526,9.141 80.386,9.443C80.247,9.745 80.062,10.004 79.832,10.218C79.601,10.433 79.329,10.599 79.018,10.716C78.705,10.833 78.357,10.891 77.973,10.891C77.508,10.891 77.104,10.801 76.758,10.622C76.413,10.442 76.125,10.198 75.894,9.891C75.664,9.584 75.491,9.224 75.376,8.813C75.261,8.401 75.201,7.961 75.197,7.493L75.197,6.451C75.201,5.987 75.263,5.548 75.381,5.134C75.5,4.721 75.675,4.36 75.907,4.05C76.139,3.742 76.428,3.497 76.774,3.318C77.12,3.138 77.521,3.048 77.978,3.048C78.379,3.048 78.737,3.107 79.052,3.226C79.366,3.344 79.634,3.512 79.858,3.728C80.081,3.945 80.259,4.209 80.392,4.519C80.525,4.83 80.61,5.175 80.648,5.556L79.391,5.556C79.371,5.332 79.328,5.129 79.264,4.946C79.199,4.762 79.111,4.605 78.999,4.475C78.887,4.344 78.747,4.243 78.577,4.173C78.408,4.104 78.208,4.069 77.978,4.069C77.695,4.069 77.458,4.133 77.266,4.263C77.074,4.392 76.919,4.566 76.8,4.784C76.681,5.002 76.596,5.254 76.546,5.54C76.496,5.826 76.47,6.126 76.47,6.441L76.47,7.493C76.47,7.821 76.496,8.129 76.546,8.417C76.596,8.705 76.679,8.958 76.795,9.174C76.91,9.39 77.064,9.561 77.256,9.687C77.447,9.813 77.686,9.875 77.973,9.875C78.413,9.875 78.748,9.751 78.978,9.501C79.209,9.252 79.345,8.898 79.386,8.441L80.648,8.441Z" fill="rgba(140,170,190,0.8)"/>
+                            <path d="M6.469,0.072C10.039,0.072 12.937,2.97 12.937,6.541C12.937,10.111 10.039,13.009 6.469,13.009C2.898,13.009 0,10.111 0,6.541C0,2.97 2.898,0.072 6.469,0.072ZM1.39,3.805L11.547,3.805L6.469,12.501L1.39,3.805Z" fill="rgba(140,170,190,0.8)"/>
+                        </g>
+                    </svg>
+                </div>
+                <div class="vl-status">
+                    <div class="vl-dot"></div>
+                    <span class="vl-status-txt">INITIALIZING MODULE INTERFACE</span>
+                </div>
+                <div class="vl-prog-track">
+                    <div class="vl-prog-bar"></div>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -173,23 +333,26 @@
         setTimeout(() => {
             const loadingScreen = document.getElementById('loading-screen');
             if (loadingScreen && !window.Vue) {
-                // Fallback Dashboard anzeigen
                 document.querySelector('#app').innerHTML = `
                     <div class="fallback-dashboard">
-                        <h1>🚀 Module Webinterface</h1>
+                        <h1>Module Webinterface</h1>
                         <p>Frontend wird vorbereitet...</p>
                     </div>
                 `;
             }
         }, 5000);
         
-        // Loading Screen ausblenden wenn Vue.js geladen ist
         window.addEventListener('DOMContentLoaded', () => {
             setTimeout(() => {
                 const loadingScreen = document.getElementById('loading-screen');
                 if (loadingScreen) {
+                    document.body.style.backgroundImage = [
+                        "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='80' height='46'%3E%3Cpath d='M40 0L80 23 40 46 0 23Z' fill='none' stroke='rgba(100,121,132,0.07)' stroke-width='0.6'/%3E%3C/svg%3E\")",
+                        "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='93'%3E%3Cpath d='M80 0L160 46.5 80 93 0 46.5Z' fill='none' stroke='rgba(90,175,207,0.04)' stroke-width='0.8'/%3E%3C/svg%3E\")"
+                    ].join(', ');
+                    document.body.style.backgroundColor = '#0b111e';
                     loadingScreen.classList.add('fade-out');
-                    setTimeout(() => loadingScreen.remove(), 500);
+                    setTimeout(() => loadingScreen.remove(), 350);
                 }
             }, 1000);
         });
