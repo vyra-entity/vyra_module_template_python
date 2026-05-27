@@ -14,7 +14,6 @@ description = "VYRA Module Template - Supports both ROS2 and SLIM (Zenoh-based) 
 authors = ["{{ author_name }} <{{ author_email }}>"]
 license = "LICENSE"
 readme = "README.md"
-requires-python = ">=3.10, <4"
 packages = [
     { include = "{{ module_name }}", from = "src/{{ module_name }}" }
 ]

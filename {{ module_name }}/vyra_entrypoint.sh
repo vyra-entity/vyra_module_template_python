@@ -324,10 +324,10 @@ echo "===================================="
 # Setup interfaces (always runs - proto files and config are needed in all modes)
 # Supports both Python modules (setup_interfaces.py) and Rust modules (.sh)
 # =============================================================================
-if [ -f "tools/setup_interfaces.py" ]; then
-    python3 tools/setup_interfaces.py
-elif [ -f "tools/setup_interfaces.sh" ]; then
+if [ -f "tools/setup_interfaces.sh" ]; then
     bash tools/setup_interfaces.sh
+elif [ -f "tools/setup_interfaces.py" ]; then
+    python3 tools/setup_interfaces.py
 else
     echo "⚠️ No setup_interfaces script found in tools/, skipping"
 fi

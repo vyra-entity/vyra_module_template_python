@@ -317,18 +317,23 @@ def update_setup_py(package_path, package_name):
 def load_reserved_list(vyra_base_path: Path = None) -> dict:
     """
     Load reserved interface names from vyra_base RESERVED.list.
-    
+
+    Returns an empty dict when vyra_base is not installed (e.g. in Rust/non-Python
+    containers).  The Rust setup_interfaces.sh performs its own reserved-name check
+    against vyra_base_rust/interfaces/config/RESERVED.list before calling this script.
+
     Returns:
         dict: {interface_filename: {'function_name': str, 'config_file': str}}
     """
     try:
         import vyra_base
+        return vyra_base.get_reserved_list()
     except ImportError:
-        raise ImportError(
-            "vyra_base not found. Please set the startup environment variable " +
-            " in your container (.env) [VYRA_STARTUP_ACTIVE=true] to load all wheels.")
-
-    return vyra_base.get_reserved_list()
+        logging.warning(
+            "⚠️  vyra_base not available – skipping reserved-name check "
+            "(expected in Rust/non-Python containers)."
+        )
+        return {}
 
 
 def check_reserved_function_names(
@@ -400,12 +405,20 @@ def get_vyra_base_config_files() -> set:
 
 
 def load_default_interfaces(interface_package_name, interface_package_path):
+    """Copy base interface files from the installed vyra_base package.
+
+    Silently returns (no-op) when vyra_base is not installed.  Rust modules
+    rely on setup_interfaces.sh to copy files from vyra_base_rust instead.
+    """
     print(f"Load default interfaces: {interface_package_name}")
     try:
         import vyra_base
     except ImportError:
-        raise ImportError(
-            "vyra_base not found. Please check your wheels directory")
+        logging.warning(
+            "⚠️  vyra_base not available – skipping base interface extraction "
+            "(expected in Rust/non-Python containers)."
+        )
+        return
 
     vyra_base.extract_interfaces(interface_package_path)
     
@@ -626,11 +639,13 @@ def generate_all_interfaces(interface_package_path: Path) -> bool:
     """
     try:
         from vyra_base.interfaces.tools.generate_interfaces import InterfaceGenerator
-    except ImportError as e:
-        raise ImportError(
-            f"Could not import InterfaceGenerator from vyra_base: {e}. "
-            "Make sure vyra_base is installed (set VYRA_STARTUP_ACTIVE=true in .env)."
+    except ImportError:
+        logging.warning(
+            "⚠️  InterfaceGenerator not available (vyra_base missing) – "
+            "skipping interface generation (expected in Rust/non-Python containers). "
+            "The Rust setup_interfaces.sh runs generate_interfaces.py from vyra_base_rust."
         )
+        return True  # non-fatal: treat as success
 
     logging.info(f"🔨 Generating interfaces from config JSONs in {interface_package_path}...")
     generator = InterfaceGenerator(interface_package_path)
