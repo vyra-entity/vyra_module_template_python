@@ -1,0 +1,6 @@
+{
+    "host": "0.0.0.0",
+    "port": 8443,
+    "use_ssl": false,
+    "_comment": "SSL/TLS is terminated externally by Traefik. The backend runs plain HTTP internally. Nginx also connects via http://backend_api (port 8443). Set use_ssl=true only when running the backend directly without a TLS-terminating reverse proxy."
+}

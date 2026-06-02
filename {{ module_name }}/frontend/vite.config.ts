@@ -1,3 +1,4 @@
+// vite.config.js - Für Vite-basierte Vue.js Projekte
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import { fileURLToPath, URL } from 'node:url'
@@ -20,13 +21,13 @@ export default defineConfig({
     },
     proxy: {
       '/{{ module_name }}/api': {
-        target: 'https://localhost:8443',
+        target: 'https://{{ module_name }}:8443',
         changeOrigin: true,
         secure: false,
         rewrite: (path) => path.replace(/^\/{{ module_name }}/, '')
       },
       '/{{ module_name }}/ws': {
-        target: 'wss://localhost:8443',
+        target: 'wss://{{ module_name }}:8443',
         changeOrigin: true,
         secure: false,
         ws: true,
@@ -37,12 +38,24 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     assetsDir: 'assets',
+    // Optimiert für Nginx Static File Serving
     rollupOptions: {
       output: {
         assetFileNames: '[name]-[hash][extname]',
         chunkFileNames: '[name]-[hash].js',
         entryFileNames: '[name]-[hash].js'
       }
-    }
+    },
+    // Nginx-optimierte Einstellungen
+    target: 'es2015',
+    minify: 'esbuild', // Fallback zu esbuild wenn terser nicht verfügbar
+    sourcemap: false, // Für Production
+    reportCompressedSize: false,
+    chunkSizeWarningLimit: 1000
+  },
+  // Optimierung für Nginx-Caching
+  define: {
+    __VUE_OPTIONS_API__: true,
+    __VUE_PROD_DEVTOOLS__: false
   }
 })

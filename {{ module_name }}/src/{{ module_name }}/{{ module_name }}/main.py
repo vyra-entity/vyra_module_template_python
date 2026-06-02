@@ -1,5 +1,6 @@
 import asyncio
 import functools
+import json
 import os
 import uvicorn
 from pathlib import Path
@@ -143,8 +144,8 @@ async def setup_statemanager(entity: VyraEntity, state_manager: StateManager) ->
     
     Args:
         entity: VyraEntity instance from core application
-        state_manager: Pre-built StateManager from build_base() so action callbacks
-            are bound before set_interfaces() is called.
+        state_manager: Pre-built StateManager from build_base() — its @remote_actionServer
+            callbacks must be bound before set_interfaces() is called.
         
     Returns:
         Configured StateManager instance
@@ -154,6 +155,7 @@ async def setup_statemanager(entity: VyraEntity, state_manager: StateManager) ->
     """
     logger.info("state_manager_initializing")
     
+    # Initialize state manager
     logger.debug("state_manager_created", state_manager_type=type(state_manager).__name__)
     
     await state_manager.setup_interfaces()
@@ -293,7 +295,7 @@ async def web_backend_runner() -> None:
     logger.info("container_initialized", wait_count=wait_count)
     
     # Get module name dynamically from entity.
-    # entity.module_entry.name is the short package name (e.g. "{{ module_name }}"),
+    # entity.module_entry.name is the short package name (e.g. "v2_modulemanager"),
     # which is also the top-level Python package installed by colcon.
     entity = container_injection.get_entity()
     module_name = entity.module_entry.name
@@ -305,14 +307,59 @@ async def web_backend_runner() -> None:
         app_path=app_path
     )
     
-    cert_path = "/workspace/storage/certificates/webserver.crt"
-    key_path = "/workspace/storage/certificates/webserver.key"
-    
-    # Check for SSL certificates: must exist AND be readable by this process
-    cert_exists = os.path.exists(cert_path) and os.path.exists(key_path)
-    cert_readable = os.access(cert_path, os.R_OK) and os.access(key_path, os.R_OK)
-    ssl_enabled = cert_exists and cert_readable
-    
+    # Load backend webserver config file (analogous to nginx.conf for the frontend).
+    # Config file controls SSL/TLS; Traefik terminates TLS externally so the backend
+    # runs plain HTTP by default.
+    webserver_config_path = "/workspace/config/backend_webserver.json"
+    webserver_config: dict = {}
+    if os.path.exists(webserver_config_path):
+        try:
+            with open(webserver_config_path, "r") as f:
+                webserver_config = json.load(f)
+            logger.info(
+                "webserver_config_loaded",
+                config_path=webserver_config_path,
+                use_ssl=webserver_config.get("use_ssl", False)
+            )
+        except Exception as e:
+            logger.warning(
+                "webserver_config_load_failed",
+                config_path=webserver_config_path,
+                error=str(e)
+            )
+    else:
+        logger.warning(
+            "webserver_config_not_found",
+            config_path=webserver_config_path,
+            fallback="HTTP mode"
+        )
+
+    host = webserver_config.get("host", "0.0.0.0")
+    port = int(webserver_config.get("port", 8443))
+    use_ssl = bool(webserver_config.get("use_ssl", False))
+
+    ssl_enabled = False
+    if use_ssl:
+        cert_path = "/workspace/storage/certificates/webserver.crt"
+        key_path = "/workspace/storage/certificates/webserver.key"
+        cert_exists = os.path.exists(cert_path) and os.path.exists(key_path)
+        cert_readable = os.access(cert_path, os.R_OK) and os.access(key_path, os.R_OK)
+        ssl_enabled = cert_exists and cert_readable
+        if not cert_readable and cert_exists:
+            logger.error(
+                "uvicorn_ssl_permission_denied",
+                reason="certificates_not_readable",
+                cert_path=cert_path,
+                key_path=key_path
+            )
+        elif not cert_exists:
+            logger.error(
+                "uvicorn_ssl_certs_missing",
+                reason="certificates_not_found",
+                expected_cert=cert_path,
+                expected_key=key_path
+            )
+
     if ssl_enabled:
         logger.info(
             "uvicorn_ssl_enabled",
@@ -321,33 +368,27 @@ async def web_backend_runner() -> None:
         )
         config = uvicorn.Config(
             app=app_path,
-            host="0.0.0.0",
-            port=8443,
+            host=host,
+            port=port,
             log_level="info",
+            log_config=None,
             ssl_certfile=cert_path,
             ssl_keyfile=key_path,
             reload=False
         )
     else:
-        if cert_exists and not cert_readable:
-            logger.error(
-                "uvicorn_ssl_permission_denied",
-                reason="certificates_not_readable",
-                cert_path=cert_path,
-                key_path=key_path
-            )
-        else:
-            logger.warning(
-                "uvicorn_ssl_disabled",
-                reason="certificates_not_found",
-                expected_cert=cert_path,
-                expected_key=key_path
-            )
+        logger.info(
+            "uvicorn_http_mode",
+            reason="config_use_ssl_false" if not use_ssl else "ssl_certs_unavailable",
+            host=host,
+            port=port
+        )
         config = uvicorn.Config(
             app=app_path,
-            host="0.0.0.0",
-            port=8443,
+            host=host,
+            port=port,
             log_level="info",
+            log_config=None,
             reload=False
         )
     

@@ -9,6 +9,7 @@ The backend communicates with core application components via dependency injecti
 
 import sys
 import os
+import json
 from ..logging_config import get_logger, log_exception, log_function_call, log_function_result
 import logging.config
 import json
@@ -74,49 +75,62 @@ except ImportError as e:
             })
             await send({
                 'type': 'http.response.body',
-                'body': ('{"error": "Could not import backend_webserver: ' + str(e) + '"}').encode('utf-8'),
+                'body': f'{{"error": "Could not import backend_webserver: {e}"}}'.encode('utf-8'),
             })
     
     logger.error("Using fallback error application")
 
 if __name__ == "__main__":
-    # Direct development testing with Uvicorn
+    # Direct development testing with Uvicorn.
+    # Reads /workspace/config/backend_webserver.json (same config as production runner
+    # in main.py) to decide whether to start with HTTP or HTTPS.
     import uvicorn
-    
-    cert_path = "/workspace/storage/certificates/webserver.crt"
-    key_path = "/workspace/storage/certificates/webserver.key"
-    
+
     # Get module name dynamically
-    module_name = os.getenv('MODULE_NAME', '{{ module_name }}')
+    module_name = os.getenv('MODULE_NAME', 'v2_modulemanager')
     app_path = f"{module_name}.{module_name}.backend_webserver.asgi:application"
-    
-    # Check for SSL certificates (exist AND readable)
-    cert_exists = os.path.exists(cert_path) and os.path.exists(key_path)
-    cert_readable = os.access(cert_path, os.R_OK) and os.access(key_path, os.R_OK)
-    if cert_exists and cert_readable:
-        logger.info("🔒 Starting with SSL/TLS encryption")
-        uvicorn.run(
-            app_path,
-            host="0.0.0.0",
-            port=8443,
-            reload=True,
-            reload_dirs=["/workspace/src/{{ module_name }}/{{ module_name }}/backend_webserver"],
-            log_level="debug",
-            ssl_certfile=cert_path,
-            ssl_keyfile=key_path
-        )
+
+    # Load backend webserver config file (analogous to nginx.conf for the frontend)
+    webserver_config_path = "/workspace/config/backend_webserver.json"
+    webserver_config: dict = {}
+    if os.path.exists(webserver_config_path):
+        try:
+            with open(webserver_config_path, "r") as _f:
+                webserver_config = json.load(_f)
+            logger.info(f"✅ Loaded backend webserver config from {webserver_config_path}")
+        except Exception as _e:
+            logger.warning(f"⚠️ Failed to load {webserver_config_path}: {_e} — using HTTP")
     else:
-        if cert_exists and not cert_readable:
-            logger.error("❌ SSL certificates exist but are not readable (Permission denied) - starting without encryption")
-            logger.info(f"   Fix with: chmod 644 {cert_path} {key_path}")
-        else:
-            logger.warning("⚠️ SSL certificates not found, starting without encryption")
-            logger.info(f"   Expected: {cert_path} and {key_path}")
-        uvicorn.run(
-            app_path,
-            host="0.0.0.0",
-            port=8000,
-            reload=True,
-            reload_dirs=["/workspace/src/{{ module_name }}/{{ module_name }}/backend_webserver"],
-            log_level="debug"
+        logger.warning(f"ℹ️ {webserver_config_path} not found — defaulting to HTTP mode")
+
+    host = webserver_config.get("host", "0.0.0.0")
+    port = int(webserver_config.get("port", 8443))
+    use_ssl = bool(webserver_config.get("use_ssl", False))
+    reload_dirs = [f"/workspace/src/{module_name}/{module_name}/backend_webserver"]
+
+    ssl_kwargs: dict = {}
+    if use_ssl:
+        cert_path = "/workspace/storage/certificates/webserver.crt"
+        key_path = "/workspace/storage/certificates/webserver.key"
+        cert_readable = (
+            os.path.exists(cert_path) and os.path.exists(key_path)
+            and os.access(cert_path, os.R_OK) and os.access(key_path, os.R_OK)
         )
+        if cert_readable:
+            logger.info("🔒 Starting with SSL/TLS encryption")
+            ssl_kwargs = {"ssl_certfile": cert_path, "ssl_keyfile": key_path}
+        else:
+            logger.error("❌ use_ssl=true in config but certificates are missing/unreadable — falling back to HTTP")
+
+    if not ssl_kwargs:
+        logger.info(f"🌐 Starting without SSL/TLS on http://{host}:{port}")
+
+    uvicorn.run(
+        app_path,
+        host=host,
+        port=port,
+        reload=True,
+        reload_dirs=reload_dirs,
+        log_level="debug",
+        **ssl_kwargs
+    )
