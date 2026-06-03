@@ -1,6 +1,6 @@
-# <MODULENAME> Tools
+# v2_modulemanager Tools
 
-Tools für das <MODULENAME> Modul.
+Tools für das v2_modulemanager Modul.
 
 ---
 
@@ -64,14 +64,14 @@ Richtet ROS2-Interfaces (Messages, Services, Actions) für das Modul ein.
 python3 tools/setup_interfaces.py
 
 # Eigenes Interface Package
-python3 tools/setup_interfaces.py --interface_pkg <MODULENAME>_interfaces
+python3 tools/setup_interfaces.py --interface_pkg v2_modulemanager_interfaces
 
 # Dynamisches Interface Package
 python3 tools/setup_interfaces.py --dynamic_src_path /tmp/dynamic_interfaces
 \`\`\`
 
 **Optionen:**
-- \`--interface_pkg\` - Name des Interface-Packages (Standard: vyra_module_interfaces)
+- \`--interface_pkg\` - Name des Interface-Packages (Standard: v2_modulemanager_interfaces)
 - \`--dynamic_src_path\` - Pfad für dynamische Interface-Packages
 
 **Funktionen:**
@@ -116,14 +116,14 @@ python3 tools/generate_grpc_protos.py \\
 RUN python /workspace/tools/generate_grpc_protos.py
 \`\`\`
 
-### \`ros2_hot_reload.py\`
+### \`ros2_start_hot_reload.py\`
 
 Hot-Reload für ROS2-Nodes während der Entwicklung.
 
 **Verwendung:**
 \`\`\`bash
 # Aus start_hot_reload.sh
-python3 tools/ros2_hot_reload.py --package <MODULENAME> --node <nodename>
+python3 tools/ros2_start_hot_reload.py --package v2_modulemanager --node <nodename>
 \`\`\`
 
 **Funktionen:**
@@ -138,17 +138,17 @@ Quick-Start für ROS2 Hot-Reload.
 
 **Verwendung:**
 \`\`\`bash
-# Standard (<MODULENAME> Package)
+# Standard (v2_modulemanager Package)
 ./tools/start_hot_reload.sh
 
 # Eigenes Package
-./tools/start_hot_reload.sh <MODULENAME> <nodename>
+./tools/start_hot_reload.sh v2_modulemanager <nodename>
 \`\`\`
 
 **Funktionen:**
 - Prüft Container-Umgebung
 - Installiert watchdog (falls nötig)
-- Startet ros2_hot_reload.py
+- Startet ros2_start_hot_reload.py
 
 ### \`generate_sros2_policy.py\`
 
@@ -182,7 +182,7 @@ Startet einen spezifischen ROS2-Node.
 
 **Verwendung:**
 \`\`\`bash
-./tools/startup_ros2_node.sh <MODULENAME> <nodename>
+./tools/startup_ros2_node.sh v2_modulemanager <nodename>
 \`\`\`
 
 ### \`startup_ros2_status.sh\`
@@ -329,7 +329,7 @@ Erstellt selbst-signierte SSL-Zertifikate für Modul-Komponenten.
 # Eigene Domain und Gültigkeitsdauer
 ./tools/create_ssl_certificates.sh \\
   --name webserver \\
-  --domain <MODULENAME>.vyra.local \\
+  --domain v2_modulemanager.vyra.local \\
   --days 730
 \`\`\`
 
@@ -368,7 +368,7 @@ Benennt das Modul komplett um - alle Referenzen, Verzeichnisse und Dateien.
 # Aus module_data.yaml lesen
 ./tools/rename_module.sh
 
-# Mit altem Namen (falls nicht {{ module_name }})
+# Mit altem Namen (falls nicht vyra_module_template)
 ./tools/rename_module.sh my_new_name --old_name=old_module_name
 \`\`\`
 
@@ -390,7 +390,7 @@ Benennt das Modul komplett um - alle Referenzen, Verzeichnisse und Dateien.
 **Workflow:**
 \`\`\`bash
 # 1. Template klonen
-git clone <repo>/{{ module_name }} my_new_module
+git clone <repo>/vyra_module_template my_new_module
 
 # 2. In Modul-Verzeichnis wechseln
 cd my_new_module
@@ -399,7 +399,7 @@ cd my_new_module
 ./tools/rename_module.sh my_new_module
 
 # 4. Überprüfen
-grep -r "{{ module_name }}" . --exclude-dir=.git
+grep -r "vyra_module_template" . --exclude-dir=.git
 # Sollte keine Treffer mehr geben (außer in dieser README)
 
 # 5. Container bauen und testen
@@ -408,7 +408,7 @@ docker compose up -d
 \`\`\`
 
 **Ideal beim:**
-- Klonen von {{ module_name }}
+- Klonen von vyra_module_template
 - Erstellen neuer Module aus Template
 - Umbenennen bestehender Module
 
@@ -575,8 +575,8 @@ echo "VYRA_DEV_MODE=true" >> .env
 
 **2. Dev-Server starten:**
 \`\`\`bash
-docker compose up -d <MODULENAME>
-docker exec -it <MODULENAME> bash
+docker compose up -d v2_modulemanager
+docker exec -it v2_modulemanager bash
 ./tools/restart_dev_server.sh
 \`\`\`
 
@@ -610,7 +610,7 @@ VYRA_DEV_MODE=false
 
 **4. Container neu starten:**
 \`\`\`bash
-docker compose restart <MODULENAME>
+docker compose restart v2_modulemanager
 \`\`\`
 
 ### Interface-Änderungen
@@ -632,7 +632,7 @@ python3 tools/setup_interfaces.py
 
 **3. Rebuild:**
 \`\`\`bash
-colcon build --packages-select vyra_module_interfaces
+colcon build --packages-select v2_modulemanager_interfaces
 source install/setup.bash
 \`\`\`
 
@@ -672,13 +672,13 @@ curl -k https://localhost/\<MODULENAME\>/
 **2. Logs ansehen:**
 \`\`\`bash
 # Container Logs
-docker logs <MODULENAME>
+docker logs v2_modulemanager
 
 # Vite Logs
-docker exec <MODULENAME> cat /workspace/log/vite.log
+docker exec v2_modulemanager cat /workspace/log/vite.log
 
 # ROS2 Logs
-docker exec <MODULENAME> cat /workspace/log/ros2/latest.log
+docker exec v2_modulemanager cat /workspace/log/ros2/latest.log
 \`\`\`
 
 **3. Dev-Server neu starten:**
@@ -729,7 +729,7 @@ docker exec <MODULENAME> cat /workspace/log/ros2/latest.log
 ./tools/debug_executables.sh  # (v2_dashboard)
 
 # Rebuild
-colcon build --packages-select <MODULENAME>
+colcon build --packages-select v2_modulemanager
 source install/setup.bash
 \`\`\`
 
@@ -743,7 +743,7 @@ source install/setup.bash
 ./tools/restart_dev_server.sh
 
 # Logs prüfen
-docker exec <MODULENAME> cat /workspace/log/vite.log
+docker exec v2_modulemanager cat /workspace/log/vite.log
 \`\`\`
 
 ### Frontend-Build schlägt fehl
@@ -766,7 +766,7 @@ cd ..
 ./tools/create_ssl_certificates.sh --name webserver --force
 
 # Nginx neu starten
-docker exec <MODULENAME> nginx -s reload
+docker exec v2_modulemanager nginx -s reload
 \`\`\`
 
 ### Hot-Reload funktioniert nicht
@@ -776,7 +776,7 @@ docker exec <MODULENAME> nginx -s reload
 ./tools/quick_test_hot_reload.sh
 
 # Manuell neu starten
-docker exec -it <MODULENAME> bash
+docker exec -it v2_modulemanager bash
 ./tools/start_hot_reload.sh
 \`\`\`
 
@@ -787,9 +787,9 @@ docker exec -it <MODULENAME> bash
 python3 tools/setup_interfaces.py
 
 # Workspace neu bauen
-colcon build --packages-select vyra_module_interfaces
+colcon build --packages-select v2_modulemanager_interfaces
 source install/setup.bash
 
 # ROS2-Node neu starten
-./tools/startup_ros2_node.sh <MODULENAME> <nodename>
+./tools/startup_ros2_node.sh v2_modulemanager <nodename>
 \`\`\`

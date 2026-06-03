@@ -93,20 +93,21 @@ fi
 
 # Debug: Show loaded environment variables
 echo "=== Loaded Environment Variables ==="
-env | grep -E "ENABLE_|VYRA_DEV_MODE|MODULE_NAME" || echo "No ENABLE_/VYRA variables found"
+env | grep -E "ENABLE_|VYRA_|MODULE_NAME" || echo "No ENABLE_/VYRA variables found"
 echo "===================================="
-
-# Set empty variables to prevent unbound variable errors
-: "${AMENT_TRACE_SETUP_FILES:=""}"
-: "${COLCON_TRACE:=""}"
-: "${AMENT_PYTHON_EXECUTABLE:="/usr/bin/python3"}"
-: "${COLCON_PYTHON_EXECUTABLE:="/usr/bin/python3"}"
-: "${CMAKE_PREFIX_PATH:="/opt/ros/kilted"}"
 
 # =============================================================================
 # Source Vyra Base and Package Setup (skip in SLIM mode)
 # =============================================================================
 if [ "${VYRA_SLIM:-false}" != "true" ]; then
+
+    # Set empty variables to prevent unbound variable errors
+    : "${AMENT_TRACE_SETUP_FILES:=""}"
+    : "${COLCON_TRACE:=""}"
+    : "${AMENT_PYTHON_EXECUTABLE:="/usr/bin/python3"}"
+    : "${COLCON_PYTHON_EXECUTABLE:="/usr/bin/python3"}"
+    : "${CMAKE_PREFIX_PATH:="/opt/ros/kilted"}"
+
     echo "=== SOURCING VYRA BASE SETUP ==="
     # source /workspace/tools/setup_ros_global.sh
     source /opt/ros/kilted/setup.bash
@@ -174,7 +175,6 @@ echo "=== SETTING UP LOG DIRECTORIES ==="
 mkdir -p /workspace/log/nginx
 mkdir -p /workspace/log/ros2
 mkdir -p /workspace/log/core
-mkdir -p /workspace/log/uvicorn
 
 # Set write permissions for all users (ROS2 logging needs this)
 chmod -R 777 /workspace/log/ 2>/dev/null || true
@@ -753,14 +753,13 @@ echo "=== CREATING LOG DIRECTORIES ==="
 
 mkdir -p /workspace/log/core
 mkdir -p /workspace/log/nginx
-mkdir -p /workspace/log/uvicorn
 
 # Only create ros2 logs directory if not in SLIM mode
 if [ "${VYRA_SLIM:-false}" != "true" ]; then
     mkdir -p /workspace/log/ros2
-    echo "✅ Created core, nginx, ros2, and uvicorn log directories"
+    echo "✅ Created core, nginx and ros2 log directories"
 else
-    echo "✅ Created core, nginx, and uvicorn log directories (slim mode: skipping ros2)"
+    echo "✅ Created core and nginx log directories (slim mode: skipping ros2)"
 fi
 
 echo "===================================="
@@ -774,27 +773,7 @@ echo "=== CONFIGURING SUPERVISORD SERVICES ==="
 if [ "${VYRA_DEV_MODE:-false}" = "true" ]; then
     echo "🚀 DEVELOPMENT MODE ENABLED"
 
-    # Enable ROS2 Hot Reload if configured (supports both ENABLE_HOT_RELOAD and ENABLE_ROS2_HOT_RELOAD)
-    if [ "${ENABLE_HOT_RELOAD:-false}" = "true" ]; then
-        echo "🔥 Enabling Hot Reload..."
-        
-        # Install watchdog if not present
-        if ! pip show watchdog > /dev/null 2>&1; then
-            echo "📦 Installing watchdog for hot reload..."
-            pip install watchdog --break-system-packages
-        fi
-        
-        # Start hot reload watcher in background
-        # Note: core is the supervisord program name for the module core
-        # hot_reload.py works for both FULL (ROS2) and SLIM (Python-only) modes
-        nohup python3 /workspace/tools/hot_reload.py "$MODULE_NAME" core core \
-            >> /workspace/log/core/hot_reload.log 2>&1 &
-        
-        HOT_RELOAD_PID=$!
-        echo "✅ Hot Reload started (PID: $HOT_RELOAD_PID)"
-        echo "   Watching: /workspace/src"
-        echo "   Logs: /workspace/log/hot_reload.log"
-    fi
+    # Hot reload is started by tools/startup_slim_core.sh when ENABLE_HOT_RELOAD=true
 
     # Check if npm is available for Vite dev server
     if command -v npm >/dev/null 2>&1; then
@@ -840,7 +819,6 @@ if [ "${VYRA_DEV_MODE:-false}" = "true" ]; then
         sed -i '/\[program:nginx\]/,/^\[/ s/autostart=false/autostart=true/' /workspace/supervisord.conf 2>/dev/null || true
     fi
 
-    # Hot-reload is handled by tools/hot_reload.py instead
 else
     echo "🏭 PRODUCTION MODE — Using Nginx with pre-built frontend"
     
@@ -894,15 +872,6 @@ if [ "${ENABLE_FRONTEND_WEBSERVER:-false}" = "true" ]; then
     sed -i '/\[program:nginx\]/,/^\[/ s/autostart=false/autostart=true/' /workspace/supervisord.conf 2>/dev/null || true
 else
     echo "⚠️ Nginx (Frontend Webserver) disabled"
-fi
-
-# Configure Uvicorn (Backend ASGI Server)
-if [ "${ENABLE_BACKEND_WEBSERVER:-false}" = "true" ]; then
-    echo "✅ Enabling Uvicorn (Backend ASGI Server)"
-    sudo sed -i '/\[program:uvicorn\]/,/^\[/ s/autostart=false/autostart=true/' /etc/supervisor/conf.d/supervisord.conf 2>/dev/null || \
-    sed -i '/\[program:uvicorn\]/,/^\[/ s/autostart=false/autostart=true/' /workspace/supervisord.conf 2>/dev/null || true
-else
-    echo "⚠️ Uvicorn (Backend ASGI Server) disabled"
 fi
 
 # Prüfe ob Supervisor-Konfiguration existiert und starte Supervisor

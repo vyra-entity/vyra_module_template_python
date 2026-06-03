@@ -3,15 +3,15 @@
 # VYRA Module Dockerfile - Optimized Multi-Stage Build
 # Module: ${MODULE_NAME}
 # ==============================================================================
-# Local Development: Uses vyra_image_python_slim:development/production (built locally)
+# Local Development: Uses vyra_image_python:development/production (built locally)
 # CI/CD Production: Uses ghcr.io/vyra-entity/vyra_framework:development/slim
 # ==============================================================================
 
 # Base image configuration (override with --build-arg)
 # Development (VYRA_DEV_MODE=true):  Uses full-development (includes Node.js for Vite)
 # Production (VYRA_DEV_MODE=false):  Uses full-production (minimal runtime)
-ARG BUILDER_BASE_IMAGE=vyra_image_python_slim:development
-ARG RUNTIME_BASE_IMAGE=vyra_image_python_slim:production
+ARG BUILDER_BASE_IMAGE=vyra_image_python:development
+ARG RUNTIME_BASE_IMAGE=vyra_image_python:production
 
 # =============================================================================
 # Stage 1: Builder - Build ROS2 packages and frontend
@@ -87,7 +87,7 @@ RUN if [ -f ".module/system-packages.txt" ]; then \
         while read -r package; do \
             [ -z "$package" ] && continue; \
             [ "${package:0:1}" = "#" ] && continue; \
-            apt-get install -y -o Acquire::ForceIPv4=true "$package" || echo "⚠️  Failed to install $package, skipping"; \
+            apt-get install -o Acquire::ForceIPv4=true -y "$package" || echo "⚠️  Failed to install $package, skipping"; \
         done < .module/system-packages.txt; \
         apt-get clean && rm -rf /var/lib/apt/lists/*; \
     fi
@@ -150,7 +150,7 @@ RUN if [ "${VYRA_SLIM:-false}" = "true" ]; then \
         \
         # Install gRPC C++ plugin for proto code generation \
         apt-get update -o Acquire::ForceIPv4=true -qq && \
-        (apt-get install -y -o Acquire::ForceIPv4=true --no-install-recommends protobuf-compiler-grpc 2>/dev/null || \
+        (apt-get install -o Acquire::ForceIPv4=true -y --no-install-recommends protobuf-compiler-grpc 2>/dev/null || \
          echo "⚠️  grpc_cpp_plugin not available - C++ proto generation will be skipped") && \
         apt-get clean && rm -rf /var/lib/apt/lists/*; \
         \

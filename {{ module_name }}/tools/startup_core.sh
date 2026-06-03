@@ -1,72 +1,141 @@
 #!/bin/bash
 ###############################################################################
-# Core Startup Script - Unified entrypoint for SLIM and normal ROS2 modes
+# startup_slim_core.sh — Unified core startup (Python and Rust)
 #
-# VYRA_SLIM=true  → Pure Python execution, no ROS2
-# VYRA_SLIM=false → Full ROS2 core with gRPC and ROS2 services
+# Invoked by supervisord [program:core]. Routes by environment:
+#   VYRA_RUST     true  = Rust module, false/missing = Python (default)
+#   VYRA_SLIM     true  = no ROS2 (direct app), false = ROS2 via startup_ros2_core.sh
+#   VYRA_DEV_MODE + ENABLE_HOT_RELOAD = development hot reload
 ###############################################################################
 
-set -e  # Exit on any error
+set -euo pipefail
 
-# Load environment variables from .env if present
-if [ -f "/workspace/.env" ]; then
+WORKSPACE_ROOT="${WORKSPACE_ROOT:-/workspace}"
+LOG_DIR="${LOG_DIR:-/workspace/log}"
+
+if [ -f "${WORKSPACE_ROOT}/.env" ]; then
     set -a
-    source /workspace/.env
+    # shellcheck source=/dev/null
+    source "${WORKSPACE_ROOT}/.env"
     set +a
 fi
 
-# Default VYRA_SLIM to false (normal ROS2 mode)
+VYRA_RUST="${VYRA_RUST:-false}"
 VYRA_SLIM="${VYRA_SLIM:-false}"
-LOG_DIR="${LOG_DIR:-/workspace/log}"
+VYRA_DEV_MODE="${VYRA_DEV_MODE:-false}"
+ENABLE_HOT_RELOAD="${ENABLE_HOT_RELOAD:-false}"
 MODULE_NAME="${MODULE_NAME:-unknown_module}"
 
-# Ensure log directory exists
-mkdir -p "$LOG_DIR/core"
+mkdir -p "${LOG_DIR}/core"
 
-echo "=========================================="
-echo "🔧 VYRA Core Startup"
-echo "=========================================="
-echo "VYRA_SLIM: $VYRA_SLIM"
-echo "LOG_DIR: $LOG_DIR"
-echo "MODULE_NAME: $MODULE_NAME"
-echo "=========================================="
+is_rust() {
+    [[ "${VYRA_RUST,,}" == "true" ]]
+}
 
-# Determine startup mode
-if [ "$VYRA_SLIM" = "true" ]; then
-    echo "🎯 SLIM Mode: Running Python application directly (no ROS2)"
+is_slim() {
+    [[ "${VYRA_SLIM,,}" == "true" ]]
+}
 
-    # In SLIM mode there is no ROS2 installation and no colcon build.
-    # PYTHONPATH must NOT contain any ROS2 paths (no rclpy, etc.).
-    # Reset PYTHONPATH completely and only add the module source tree and any
-    # additional pure-Python install paths.
+is_dev_hot_reload() {
+    [[ "${VYRA_DEV_MODE,,}" == "true" && "${ENABLE_HOT_RELOAD,,}" == "true" ]]
+}
+
+find_rust_binary() {
+    local binary="" candidate binary_name hyphenated
+    local -a binary_names=("$MODULE_NAME")
+    hyphenated="${MODULE_NAME//_/-}"
+    if [[ "$hyphenated" != "$MODULE_NAME" ]]; then
+        binary_names+=("$hyphenated")
+    fi
+    for binary_dir in "${WORKSPACE_ROOT}/bin" "${WORKSPACE_ROOT}/target/release" "${WORKSPACE_ROOT}/target/debug"; do
+        for binary_name in "${binary_names[@]}"; do
+            candidate="${binary_dir}/${binary_name}"
+            if [ -f "$candidate" ]; then
+                binary="$candidate"
+                echo "$binary"
+                return 0
+            fi
+        done
+    done
+    return 1
+}
+
+start_python_hot_reload_background() {
+    echo "🔥 Python hot reload: starting background watcher..."
+    if ! pip show watchdog >/dev/null 2>&1; then
+        echo "📦 Installing watchdog for hot reload..."
+        pip install watchdog --break-system-packages
+    fi
+    nohup python3 "${WORKSPACE_ROOT}/tools/start_hot_reload.py" \
+        "$MODULE_NAME" core core \
+        >> "${LOG_DIR}/core/hot_reload.log" 2>&1 &
+    echo "✅ Hot reload watcher started (PID: $!, log: ${LOG_DIR}/core/hot_reload.log)"
+}
+
+start_rust_hot_reload() {
+    local features="full"
+    local bin_name="${MODULE_NAME//_/-}"
+    if is_slim; then
+        features="slim"
+    fi
+    echo "🔥 Rust hot reload: exec start_hot_reload.sh (features=${features}, bin=${bin_name})"
+    exec bash "${WORKSPACE_ROOT}/tools/start_hot_reload.sh" --features "$features" --bin "$bin_name"
+}
+
+start_python_slim() {
     export PYTHONPATH=""
-
-    # Prepend the source tree so the module is importable directly from src/.
-    # This also ensures that edits take effect without a colcon rebuild.
-    SRC_DIR="/workspace/src/${MODULE_NAME}"
-    if [ -d "$SRC_DIR" ]; then
-        export PYTHONPATH="${SRC_DIR}:${PYTHONPATH}"
-        echo "📂 PYTHONPATH set to ${SRC_DIR} (SLIM mode, no ROS2)"
-    else
-        echo "❌ ERROR: Source directory ${SRC_DIR} not found"
+    local src_dir="${WORKSPACE_ROOT}/src/${MODULE_NAME}"
+    if [ ! -d "$src_dir" ]; then
+        echo "❌ ERROR: Source directory ${src_dir} not found"
         exit 1
     fi
-
-    # Disable Python stdout buffering so log lines appear immediately
+    export PYTHONPATH="${src_dir}:${PYTHONPATH}"
     export PYTHONUNBUFFERED=1
-
-    echo "🚀 Launching: python3 -m ${MODULE_NAME}.main"
-    cd /workspace
+    echo "🚀 SLIM Python: python3 -m ${MODULE_NAME}.main"
+    cd "${WORKSPACE_ROOT}"
     exec python3 -m "${MODULE_NAME}.main"
+}
 
-else
-    echo "🎯 Normal Mode: Starting with Full ROS2 core"
-    
-    # Delegate to startup_ros2_core.sh for ROS2-based startup
-    if [ -f "/workspace/tools/startup_ros2_core.sh" ]; then
-        exec bash /workspace/tools/startup_ros2_core.sh
-    else
-        echo "❌ ERROR: startup_ros2_core.sh not found at /workspace/tools/startup_ros2_core.sh"
+start_rust_slim() {
+    local binary
+    if ! binary="$(find_rust_binary)"; then
+        echo "❌ Module binary not found (checked bin/, target/release/, target/debug/)"
+        echo "   Expected names: ${MODULE_NAME} or ${MODULE_NAME//_/-}"
         exit 1
     fi
+    echo "🚀 SLIM Rust: ${binary} --mode slim"
+    exec "$binary" --mode slim
+}
+
+echo "=========================================="
+echo "🔧 VYRA startup_slim_core.sh"
+echo "=========================================="
+echo "MODULE_NAME:      ${MODULE_NAME}"
+echo "VYRA_RUST:        ${VYRA_RUST}"
+echo "VYRA_SLIM:        ${VYRA_SLIM}"
+echo "VYRA_DEV_MODE:    ${VYRA_DEV_MODE}"
+echo "ENABLE_HOT_RELOAD:${ENABLE_HOT_RELOAD}"
+echo "=========================================="
+
+if is_dev_hot_reload; then
+    if is_rust; then
+        start_rust_hot_reload
+    else
+        start_python_hot_reload_background
+    fi
+fi
+
+if is_slim; then
+    if is_rust; then
+        start_rust_slim
+    else
+        start_python_slim
+    fi
+else
+    echo "🎯 FULL mode: delegating to startup_ros2_core.sh"
+    if [ -f "${WORKSPACE_ROOT}/tools/startup_ros2_core.sh" ]; then
+        exec bash "${WORKSPACE_ROOT}/tools/startup_ros2_core.sh"
+    fi
+    echo "❌ ERROR: startup_ros2_core.sh not found"
+    exit 1
 fi
