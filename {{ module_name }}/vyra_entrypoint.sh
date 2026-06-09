@@ -332,45 +332,6 @@ else
 fi
 
 # =============================================================================
-# SLIM Mode: Write config and proto interfaces to NFS
-# In full mode this is handled by the NFS Interface Management block below.
-# In SLIM mode the NFS block is skipped, so we write interface files here.
-# =============================================================================
-if [ "${VYRA_SLIM:-false}" = "true" ]; then
-    NFS_VOLUME_PATH="${NFS_VOLUME_PATH:-/nfs/vyra_interfaces}"
-    if [ -d "$NFS_VOLUME_PATH" ]; then
-        echo "=== SLIM MODE: Writing config and proto interfaces to NFS ==="
-        MODULE_DATA_FILE="/workspace/.module/module_data.yaml"
-        if [ -f "$MODULE_DATA_FILE" ]; then
-            INSTANCE_ID=$(grep '^uuid:' "$MODULE_DATA_FILE" | awk '{print $2}' | tr -d '"' | tr -d "'")
-        else
-            INSTANCE_ID="${HOSTNAME}"
-        fi
-        INTERFACE_SRC_DIR="/workspace/src/${MODULE_NAME}_interfaces"
-        NFS_MODULE_DIR="$NFS_VOLUME_PATH/${MODULE_NAME}_${INSTANCE_ID}_interfaces"
-        NFS_CONFIG_DIR="$NFS_MODULE_DIR/config"
-        mkdir -p "$NFS_CONFIG_DIR" 2>/dev/null || { echo "⚠️  SLIM: Cannot write to NFS at $NFS_MODULE_DIR (read-only or wrong path), skipping NFS write"; NFS_WRITE_OK=false; }
-        NFS_WRITE_OK="${NFS_WRITE_OK:-true}"
-        if [ "$NFS_WRITE_OK" = "true" ]; then
-        if [ -d "$INTERFACE_SRC_DIR/config" ]; then
-            cp -r "$INTERFACE_SRC_DIR/config"/.  "$NFS_CONFIG_DIR"/
-            echo "✅ SLIM: config/ deployed to NFS"
-        fi
-        for sub in msg srv; do
-            if [ -d "$INTERFACE_SRC_DIR/$sub/_gen" ]; then
-                mkdir -p "$NFS_MODULE_DIR/$sub/_gen"
-                cp -r "$INTERFACE_SRC_DIR/$sub/_gen"/.  "$NFS_MODULE_DIR/$sub/_gen"/
-                echo "✅ SLIM: $sub/_gen deployed to NFS"
-            fi
-        done
-        echo "✅ SLIM: NFS write complete at $NFS_MODULE_DIR"
-        fi
-    else
-        echo "ℹ️  SLIM MODE: NFS volume not found at $NFS_VOLUME_PATH, skipping NFS write"
-    fi
-fi
-
-# =============================================================================
 # NFS Interface Management
 # New NFS layout per module:
 #   NFS_MODULE_DIR/
@@ -378,8 +339,26 @@ fi
 #     msg/           ← .msg files + _gen/ (pb2 generated files)
 #     srv/           ← .srv files + _gen/ (pb2 generated files)
 #     action/        ← .action files
-#     ros2/          ← colcon install artifacts (setup.bash, share/, ...)
+#     ros2/          ← colcon install artifacts (setup.bash, share/, ...) — full mode only
+#
+# Source selection (VYRA_SLIM unchanged):
+#   SLIM=true  → src/${MODULE_NAME}_interfaces  (no colcon install tree)
+#   SLIM=false → install/${MODULE_NAME}_interfaces (colcon build output)
 # =============================================================================
+
+# Copy directory contents safely (set -e safe: no-op on missing/empty source)
+copy_tree_contents() {
+    local src="$1" dst="$2"
+    [ -d "$src" ] || return 0
+    [ -n "$(ls -A "$src" 2>/dev/null)" ] || return 0
+    mkdir -p "$dst"
+    if command -v rsync >/dev/null 2>&1; then
+        rsync -a "$src"/ "$dst"/ 2>/dev/null || cp -r "$src"/. "$dst"/
+    else
+        cp -r "$src"/. "$dst"/
+    fi
+}
+
 echo "=== NFS INTERFACE MANAGEMENT ==="
 
 # Read UUID from .module/module_data.yaml
@@ -397,21 +376,27 @@ fi
 
 NFS_VOLUME_PATH="${NFS_VOLUME_PATH:-/nfs/vyra_interfaces}"
 INTERFACE_DIR="${MODULE_NAME}_${INSTANCE_ID}_interfaces"
-# Source of colcon-built artifacts (ROS2 install tree)
-INTERFACE_SOURCE="/workspace/install/${MODULE_NAME}_interfaces"
-INTERFACE_STAGING="/tmp/module_interfaces_staging/${MODULE_NAME}_interfaces"
-# Source of raw interface definition files (src tree)
 INTERFACE_SRC_DIR="/workspace/src/${MODULE_NAME}_interfaces"
+INTERFACE_INSTALL_DIR="/workspace/install/${MODULE_NAME}_interfaces"
+INTERFACE_STAGING="/tmp/module_interfaces_staging/${MODULE_NAME}_interfaces"
+
+if [ "${VYRA_SLIM:-false}" = "true" ]; then
+    echo "ℹ️  SLIM mode: interface source = src tree ($INTERFACE_SRC_DIR)"
+else
+    echo "ℹ️  Full mode: interface source = colcon install ($INTERFACE_INSTALL_DIR)"
+fi
 
 if [ -d "$NFS_VOLUME_PATH" ]; then
     echo "✅ NFS volume found at $NFS_VOLUME_PATH"
 
-    # Restore from staging if install dir is missing (image build artefact)
-    if [ ! -d "$INTERFACE_SOURCE" ] && [ -d "$INTERFACE_STAGING" ]; then
-        echo "📦 Copying interfaces from staging to install..."
-        mkdir -p "/workspace/install"
-        cp -r "$INTERFACE_STAGING" "$INTERFACE_SOURCE"
-        echo "✅ Interfaces copied from staging to install"
+    # Full mode only: restore colcon install tree from image staging when workspace mount hides it
+    if [ "${VYRA_SLIM:-false}" != "true" ]; then
+        if [ ! -d "$INTERFACE_INSTALL_DIR" ] && [ -d "$INTERFACE_STAGING" ]; then
+            echo "📦 Copying interfaces from staging to install..."
+            mkdir -p "/workspace/install"
+            cp -r "$INTERFACE_STAGING" "$INTERFACE_INSTALL_DIR"
+            echo "✅ Interfaces copied from staging to install"
+        fi
     fi
 
     NFS_MODULE_DIR="$NFS_VOLUME_PATH/$INTERFACE_DIR"
@@ -433,13 +418,21 @@ if [ -d "$NFS_VOLUME_PATH" ]; then
     # Checks: first-time, config file count, interface file counts, checksums
     # ------------------------------------------------------------------
     FORCE_UPDATE=false
-    if [ ! -f "$NFS_ROS_DIR/setup.bash" ]; then
+    SOURCE_CONFIG_DIR="$INTERFACE_SRC_DIR/config"
+
+    if [ "${VYRA_SLIM:-false}" = "true" ]; then
+        if [ ! -d "$NFS_CONFIG_DIR" ] || [ -z "$(ls -A "$NFS_CONFIG_DIR" 2>/dev/null)" ]; then
+            echo "ℹ️  First-time setup (SLIM): will deploy interfaces from src tree to NFS..."
+            FORCE_UPDATE=true
+        fi
+    elif [ ! -f "$NFS_ROS_DIR/setup.bash" ]; then
         echo "ℹ️  First-time setup: will copy all interfaces to NFS..."
         FORCE_UPDATE=true
-    else
+    fi
+
+    if [ "$FORCE_UPDATE" = false ]; then
         # Use src tree as source of truth for config count (always has latest,
         # even before colcon rebuild; install tree may lag behind)
-        SOURCE_CONFIG_DIR="$INTERFACE_SRC_DIR/config"
 
         # 1. Compare config file count (detects new *.meta.json files)
         SOURCE_CONFIG_COUNT=$(find "$SOURCE_CONFIG_DIR" -maxdepth 1 -name "*.meta.json" 2>/dev/null | wc -l)
@@ -491,17 +484,27 @@ if [ -d "$NFS_VOLUME_PATH" ]; then
     if [ "$FORCE_UPDATE" = true ]; then
         echo "🔄 Updating NFS interfaces..."
 
-        # 1. ROS2 colcon install tree → ros2/
-        if [ -d "$INTERFACE_SOURCE" ]; then
-            if command -v rsync >/dev/null 2>&1; then
-                rsync -a --delete "$INTERFACE_SOURCE/" "$NFS_ROS_DIR/" 2>/dev/null \
-                    || cp -r "$INTERFACE_SOURCE"/* "$NFS_ROS_DIR"/
-            else
-                cp -r "$INTERFACE_SOURCE"/* "$NFS_ROS_DIR"/
-            fi
+        if [ "${VYRA_SLIM:-false}" = "true" ]; then
+            # SLIM: deploy everything from src/${MODULE_NAME}_interfaces (no colcon install/)
+            copy_tree_contents "$INTERFACE_SRC_DIR/config" "$NFS_CONFIG_DIR"
+            [ -d "$INTERFACE_SRC_DIR/config" ] && echo "✅ config/ deployed (from src tree)"
 
-            # Write a self-contained setup.bash that points to this ros2/ overlay
-            cat > "$NFS_ROS_DIR/setup.bash" <<'SETUPEOF'
+            copy_tree_contents "$INTERFACE_SRC_DIR/msg" "$NFS_MSG_DIR"
+            [ -d "$INTERFACE_SRC_DIR/msg" ] && echo "✅ msg/ deployed (from src tree, incl. _gen/)"
+
+            copy_tree_contents "$INTERFACE_SRC_DIR/srv" "$NFS_SRV_DIR"
+            [ -d "$INTERFACE_SRC_DIR/srv" ] && echo "✅ srv/ deployed (from src tree, incl. _gen/)"
+
+            copy_tree_contents "$INTERFACE_SRC_DIR/action" "$NFS_ACTION_DIR"
+            [ -d "$INTERFACE_SRC_DIR/action" ] && echo "✅ action/ deployed (from src tree)"
+
+            echo "ℹ️  SLIM mode: skipping ros2/ colcon install copy (not built)"
+        else
+            # Full mode: colcon install tree → ros2/, config from install, definitions from src
+            if [ -d "$INTERFACE_INSTALL_DIR" ] && [ -n "$(ls -A "$INTERFACE_INSTALL_DIR" 2>/dev/null)" ]; then
+                copy_tree_contents "$INTERFACE_INSTALL_DIR" "$NFS_ROS_DIR"
+
+                cat > "$NFS_ROS_DIR/setup.bash" <<'SETUPEOF'
 #!/usr/bin/env bash
 # Auto-generated by vyra_entrypoint.sh — do not edit manually
 COLCON_CURRENT_PREFIX="$(cd "$(dirname "${BASH_SOURCE[0]}")" > /dev/null && pwd)"
@@ -515,71 +518,42 @@ if [ -f "$COLCON_CURRENT_PREFIX/local_setup.bash" ]; then
     . "$COLCON_CURRENT_PREFIX/local_setup.bash"
 fi
 SETUPEOF
-            chmod +x "$NFS_ROS_DIR/setup.bash"
-            echo "✅ ros2/ install tree deployed"
-        else
-            echo "⚠️  No install source at $INTERFACE_SOURCE — skipping ros2/ copy"
-        fi
-
-        # 2. JSON config files → config/
-        CONFIG_SRC="$INTERFACE_SOURCE/share/${MODULE_NAME}_interfaces/config"
-        if [ -d "$CONFIG_SRC" ]; then
-            if command -v rsync >/dev/null 2>&1; then
-                rsync -a --delete "$CONFIG_SRC/" "$NFS_CONFIG_DIR/" 2>/dev/null \
-                    || cp -r "$CONFIG_SRC"/* "$NFS_CONFIG_DIR"/
+                chmod +x "$NFS_ROS_DIR/setup.bash"
+                echo "✅ ros2/ install tree deployed (from install/)"
             else
-                cp -r "$CONFIG_SRC"/* "$NFS_CONFIG_DIR"/
+                echo "⚠️  No colcon install at $INTERFACE_INSTALL_DIR — skipping ros2/ copy"
             fi
-            echo "✅ config/ deployed (from install tree)"
-        fi
 
-        # Merge any JSON config files from src tree that are not yet in the install
-        # (e.g. newly added *.meta.json files that haven't been rebuilt yet)
-        if [ -d "$INTERFACE_SRC_DIR/config" ]; then
-            for src_json in "$INTERFACE_SRC_DIR/config"/*.json; do
-                [ -f "$src_json" ] || continue
-                dest_json="$NFS_CONFIG_DIR/$(basename "$src_json")"
-                if [ ! -f "$dest_json" ]; then
-                    cp "$src_json" "$dest_json"
-                    echo "✅ config/ added from src tree: $(basename "$src_json")"
-                fi
-            done
-        fi
+            CONFIG_SRC="$INTERFACE_INSTALL_DIR/share/${MODULE_NAME}_interfaces/config"
+            if [ -d "$CONFIG_SRC" ]; then
+                copy_tree_contents "$CONFIG_SRC" "$NFS_CONFIG_DIR"
+                echo "✅ config/ deployed (from install tree)"
+            fi
 
-        # 3. Raw interface definitions (.msg / .srv / .action + _gen/) → msg/ srv/ action/
-        if [ -d "$INTERFACE_SRC_DIR" ]; then
-            # msg/
-            if [ -d "$INTERFACE_SRC_DIR/msg" ]; then
-                if command -v rsync >/dev/null 2>&1; then
-                    rsync -a --delete "$INTERFACE_SRC_DIR/msg/" "$NFS_MSG_DIR/" 2>/dev/null \
-                        || cp -r "$INTERFACE_SRC_DIR/msg"/. "$NFS_MSG_DIR"/
-                else
-                    cp -r "$INTERFACE_SRC_DIR/msg"/. "$NFS_MSG_DIR"/
-                fi
-                echo "✅ msg/ deployed (incl. _gen/)"
+            # Merge any JSON config files from src tree that are not yet in the install
+            if [ -d "$INTERFACE_SRC_DIR/config" ]; then
+                for src_json in "$INTERFACE_SRC_DIR/config"/*.json; do
+                    [ -f "$src_json" ] || continue
+                    dest_json="$NFS_CONFIG_DIR/$(basename "$src_json")"
+                    if [ ! -f "$dest_json" ]; then
+                        cp "$src_json" "$dest_json"
+                        echo "✅ config/ added from src tree: $(basename "$src_json")"
+                    fi
+                done
             fi
-            # srv/
-            if [ -d "$INTERFACE_SRC_DIR/srv" ]; then
-                if command -v rsync >/dev/null 2>&1; then
-                    rsync -a --delete "$INTERFACE_SRC_DIR/srv/" "$NFS_SRV_DIR/" 2>/dev/null \
-                        || cp -r "$INTERFACE_SRC_DIR/srv"/. "$NFS_SRV_DIR"/
-                else
-                    cp -r "$INTERFACE_SRC_DIR/srv"/. "$NFS_SRV_DIR"/
-                fi
-                echo "✅ srv/ deployed (incl. _gen/)"
+
+            if [ -d "$INTERFACE_SRC_DIR" ]; then
+                copy_tree_contents "$INTERFACE_SRC_DIR/msg" "$NFS_MSG_DIR"
+                [ -d "$INTERFACE_SRC_DIR/msg" ] && echo "✅ msg/ deployed (incl. _gen/)"
+
+                copy_tree_contents "$INTERFACE_SRC_DIR/srv" "$NFS_SRV_DIR"
+                [ -d "$INTERFACE_SRC_DIR/srv" ] && echo "✅ srv/ deployed (incl. _gen/)"
+
+                copy_tree_contents "$INTERFACE_SRC_DIR/action" "$NFS_ACTION_DIR"
+                [ -d "$INTERFACE_SRC_DIR/action" ] && echo "✅ action/ deployed"
+            else
+                echo "ℹ️  No src interface definitions at $INTERFACE_SRC_DIR (optional)"
             fi
-            # action/
-            if [ -d "$INTERFACE_SRC_DIR/action" ]; then
-                if command -v rsync >/dev/null 2>&1; then
-                    rsync -a --delete "$INTERFACE_SRC_DIR/action/" "$NFS_ACTION_DIR/" 2>/dev/null \
-                        || cp -r "$INTERFACE_SRC_DIR/action"/. "$NFS_ACTION_DIR"/
-                else
-                    cp -r "$INTERFACE_SRC_DIR/action"/. "$NFS_ACTION_DIR"/
-                fi
-                echo "✅ action/ deployed"
-            fi
-        else
-            echo "ℹ️  No src interface definitions at $INTERFACE_SRC_DIR (optional)"
         fi
 
         echo "✅ NFS interfaces fully updated at $NFS_MODULE_DIR"

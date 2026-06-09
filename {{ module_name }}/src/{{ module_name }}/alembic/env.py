@@ -46,6 +46,18 @@ def _resolve_db_url() -> str:
     if env_url:
         return env_url.replace("sqlite+aiosqlite", "sqlite")
 
+    # Try workspace-level config first (runtime path)
+    workspace_config = Path("/workspace") / "config" / "storage_config.ini"
+    if workspace_config.exists():
+        cfg = configparser.ConfigParser()
+        cfg.read(workspace_config)
+        if "sqlite" in cfg:
+            db_path = cfg["sqlite"].get("path", "/workspace/storage/")
+            db_name = cfg["sqlite"].get("database", "{{ module_name }}.sqlite")
+            db_name = db_name.replace("${module_name}", "{{ module_name }}")
+            return f"sqlite:///{db_path}{db_name}"
+
+    # Fall back to development resource path
     ini_path = HERE / "resource" / "storage_config.ini"
     if ini_path.exists():
         cfg = configparser.ConfigParser()

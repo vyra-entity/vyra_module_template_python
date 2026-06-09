@@ -399,7 +399,10 @@ async def _create_base_interfaces() -> list[FunctionConfigEntry]:
 
 async def _load_storage_config() -> dict[str, Any]:
     """
-    Load the storage configuration from resource/storage_config.ini file.
+    Load the storage configuration from config/storage_config.ini file.
+    
+    In runtime (FULL mode), loads from /workspace/config/storage_config.ini.
+    In development (SLIM mode), loads from the workspace root config/ directory.
     
     Returns:
         Storage configuration dictionary
@@ -411,10 +414,21 @@ async def _load_storage_config() -> dict[str, Any]:
     log_function_call(logger, function="_load_storage_config", package=PACKAGE_NAME)
     
     try:
-        config = await load_resource(
-            PACKAGE_NAME,
-            Path('resource', 'storage_config.ini')
-        )
+        # Try workspace-level config first (runtime path)
+        workspace_root = _get_workspace_root()
+        config_path = workspace_root / 'config' / 'storage_config.ini'
+        
+        if config_path.exists():
+            logger.debug("loading_storage_config_from_workspace", path=str(config_path))
+            config = await FileReader.open_ini_file(config_path)
+        else:
+            # Fall back to package resource (development mode)
+            logger.debug("workspace_config_not_found_trying_resource", workspace_path=str(config_path))
+            config = await load_resource(
+                PACKAGE_NAME,
+                Path('config', 'storage_config.ini')
+            )
+        
         log_function_result(
             logger,
             success=True,
@@ -428,22 +442,46 @@ async def _load_storage_config() -> dict[str, Any]:
 
 async def _load_module_config() -> dict[str, Any]:
     """
-    Load the module configuration from pyproject.toml file.
+    Load the module configuration from .module/module_data.yaml and
+    .module/module_params.yaml (security, simulation sections).
     
     Returns:
         Module configuration dictionary
         
     Raises:
-        FileNotFoundError: If pyproject.toml file is not found
-        ValueError: If file is not valid or missing required sections
+        FileNotFoundError: If module_data.yaml file is not found
+        ValueError: If module_data.yaml is empty or invalid
     """
     log_function_call(logger, function="_load_module_config", package=PACKAGE_NAME)
     
     try:
-        config = await load_resource(
-            PACKAGE_NAME,
-            Path('resource', 'module_config.yaml')
-        )
+        workspace_root = _get_workspace_root()
+        data_path = workspace_root / ".module" / "module_data.yaml"
+        params_path = workspace_root / ".module" / "module_params.yaml"
+
+        if not data_path.exists():
+            logger.error("module_data_not_found", path=str(data_path))
+            raise FileNotFoundError(
+                f"Module data file not found at {data_path}"
+            )
+
+        module_data = await FileReader.open_yaml_file(data_path)
+        if not module_data:
+            raise ValueError("module_data.yaml is empty or invalid")
+
+        config: dict[str, Any] = dict(module_data)
+        config["package_name"] = str(module_data.get("name", PACKAGE_NAME))
+
+        if params_path.exists():
+            module_params = await FileReader.open_yaml_file(params_path) or {}
+            if isinstance(module_params, dict):
+                if "security" in module_params:
+                    config["security"] = module_params["security"]
+                if "simulation" in module_params:
+                    config["simulation"] = module_params["simulation"]
+        else:
+            logger.warning("module_params_not_found", path=str(params_path))
+
         log_function_result(
             logger,
             success=True,

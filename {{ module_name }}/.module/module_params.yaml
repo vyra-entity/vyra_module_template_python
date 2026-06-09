@@ -49,6 +49,28 @@ state_manager:
   # Log every state transition at DEBUG level (useful during development)
   debug_transitions: false
 
+# Security Configuration (used by VyraEntity SecurityManager)
+security:
+  enabled: true
+  max_level: 4  # SecurityLevel.HMAC
+  session_duration: 3600
+  ca_key_path: null
+  ca_cert_path: null
+  module_passwords: {}
+  module_access:
+    level_4:
+      username: "user"
+      password: "user"
+    level_5:
+      username: "AdminVar"
+      password: "Admin123"
+
+# Simulation Configuration
+simulation:
+  enabled: true
+  name: "VYRA Simulation"
+  description: "Simulation for VYRA Python Module Template"
+
 # Resource Limits (optional)
 resources:
   cpu_limit: null  # Unlimited
