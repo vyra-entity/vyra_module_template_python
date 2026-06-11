@@ -47,7 +47,7 @@ class UserManager:
             self.internal_usermanager = InternalUserManager(self.entity)
             
             # Register ROS2 interfaces (if needed)
-            await self.internal_usermanager.set_interfaces()
+            await self.internal_usermanager.register_endpoints()
             
             # Initialize default admin user from .env if no users exist
             initial_admin_user = os.getenv('INITIAL_ADMIN_USER', 'admin')

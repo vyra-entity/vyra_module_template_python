@@ -10,7 +10,7 @@ import asyncio
 import os
 from typing import Any, Optional
 
-from vyra_base.com import InterfaceFactory, ProtocolType
+from vyra_base.com import TransportProviderFactory, ProtocolType
 from vyra_base.core.entity import VyraEntity
 
 from ..logging_config import get_logger
@@ -50,7 +50,7 @@ class UserManagerClient:
         logger.info("usermanager_client_stopped")
 
     async def _call_external(self, function_name: str, payload: Optional[dict[str, Any]] = None) -> dict[str, Any]:
-        client = await InterfaceFactory.create_client(
+        client = await TransportProviderFactory.create_client(
             name=function_name,
             protocols=[ProtocolType.ZENOH],
             module_name=self.target_module_name,

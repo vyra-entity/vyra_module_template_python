@@ -41,9 +41,9 @@ from typing import TYPE_CHECKING, Any
 
 import yaml
 
-from vyra_base.com import InterfaceFactory, remote_service
+from vyra_base.com import TransportProviderFactory, remote_service
 from .. import container_injection
-from ..interface import auto_register_interfaces
+from ..interface import register_endpoint_callbacks
 
 if TYPE_CHECKING:
     from vyra_base.core import VyraEntity
@@ -364,11 +364,11 @@ class PluginGateway:
         self._runtime_pool = GatewayWasmRuntimePool(gateway=self)
         logger.info("✅ PluginGateway: setup complete (module=%s)", self._own_module_name)
 
-    async def set_interfaces(self) -> None:
+    async def register_endpoints(self) -> None:
         """Register @remote_service decorated methods on the entity."""
         if self.entity is None:
             raise RuntimeError("PluginGateway.setup() must be called before set_interfaces()")
-        await auto_register_interfaces(self.entity, callback_parent=self)
+        register_endpoint_callbacks(self.entity, callback_parent=self)
         logger.info("✅ PluginGateway: interfaces registered")
 
     async def _setup_resolve_client(self) -> None:
@@ -378,7 +378,7 @@ class PluginGateway:
         The target module is read from ``labels.modulemanager.module_id``
         in ``/workspace/.module/module_params.yaml``.
         Both ``module_name`` and ``module_id`` are passed to
-        InterfaceFactory so that a remote TopicBuilder is created,
+        TransportProviderFactory so that a remote TopicBuilder is created,
         routing requests to the correct v2_modulemanager instance.
         """
         full_instance_name = self._read_modulemanager_id()
@@ -393,7 +393,7 @@ class PluginGateway:
             target_module_id = full_instance_name
 
         try:
-            self._resolve_client = await InterfaceFactory.create_client(
+            self._resolve_client = await TransportProviderFactory.create_client(
                 name="resolve_plugins",
                 module_name=target_module_name,
                 module_id=target_module_id,
@@ -405,7 +405,7 @@ class PluginGateway:
             self._resolve_client = None
 
         try:
-            self._get_nfs_path_client = await InterfaceFactory.create_client(
+            self._get_nfs_path_client = await TransportProviderFactory.create_client(
                 name="get_nfs_path",
                 module_name=target_module_name,
                 module_id=target_module_id,

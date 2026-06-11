@@ -289,10 +289,10 @@ class StateManager:
 
         return True
 
-    async def setup_interfaces(self) -> None:
+    async def register_endpoints(self) -> None:
         """Register all Zenoh @remote_service handlers with the VyraEntity."""
-        from ..interface import auto_register_interfaces  # lazy – needs ROS2 env
-        await auto_register_interfaces(self.entity, callback_parent=self)
+        from ..interface import register_endpoint_callbacks  # lazy – needs ROS2 env
+        register_endpoint_callbacks(self.entity, callback_parent=self)
         logger.info("✅ StateManager Zenoh interfaces registered")
 
     async def initialization_start(self) -> bool:

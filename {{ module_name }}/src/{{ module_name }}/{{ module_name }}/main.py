@@ -456,7 +456,7 @@ async def initialize_module(taskmanager: TaskManager) -> tuple[VyraEntity, State
     
     # Register remote callable interfaces
     logger.debug("registering_component_interfaces")
-    await component.set_interfaces()
+    await component.register_endpoints()
     logger.info("component_interfaces_registered")
     
     # Set instances in container_injection for web_backend access
@@ -473,7 +473,7 @@ async def initialize_module(taskmanager: TaskManager) -> tuple[VyraEntity, State
     from .plugin.plugin_gateway import PluginGateway
     plugin_gateway = PluginGateway()
     plugin_gateway.setup()
-    await plugin_gateway.set_interfaces()
+    await plugin_gateway.register_endpoints()
     container_injection.set_plugin_gateway(plugin_gateway)
     logger.info("plugin_gateway_ready")
 

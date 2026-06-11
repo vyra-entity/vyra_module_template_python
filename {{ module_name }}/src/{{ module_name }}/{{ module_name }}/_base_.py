@@ -1001,7 +1001,9 @@ async def build_base():
         # The installed ament package lives under install/{MODULE_NAME}_interfaces/
         interfaces_install_path = Path(f"/workspace/src/{entity.module_entry.name}_interfaces")
         if interfaces_install_path.exists():
-            entity.set_interface_paths([interfaces_install_path])
+            # New API: registers with ManifestResolver + SchemaResolver
+            entity.add_manifest_paths([interfaces_install_path])
+            entity.add_schema_paths([interfaces_install_path])
             logger.info(
                 "interface_paths_set",
                 paths=[str(interfaces_install_path)]
@@ -1012,52 +1014,78 @@ async def build_base():
                 path=str(interfaces_install_path)
             )
 
-        # Load base interface metadata
-        logger.debug("creating_base_interfaces")
-        base_interfaces: list[Any] = await _create_base_interfaces()
-        interface_names = [i.functionname for i in base_interfaces]
-        logger.info(
-            "base_interfaces_created",
-            count=len(base_interfaces),
-            interfaces=interface_names
-        )
+        # ── Removed: _create_base_interfaces (now handled by ManifestResolver) ──
+        # logger.debug("creating_base_interfaces")
+        # base_interfaces: list[Any] = await _create_base_interfaces()
+        # interface_names = [i.functionname for i in base_interfaces]
+        # logger.info(
+        #     "base_interfaces_created",
+        #     count=len(base_interfaces),
+        #     interfaces=interface_names
+        # )
 
-        # BLUEPRINT STRATEGY — Phase 2: bind callbacks before registering interfaces
-        # Interface definitions (JSON metadata) are separated from implementations
-        # (entity methods). We bind here so set_interfaces creates real queryables.
-        # StateManager must be created HERE so its @remote_actionServer callbacks
-        # (request_lc_suspend, request_lc_resume) are bound before set_interfaces()
-        # is called. Creating it after build_base() would cause ValueError because
-        # the action server would have no callbacks registered.
+        # Phase 2: bind callbacks for module-specific components.
+        #
+        # Entity-internal components (param_manager, volatile, skill_manager,
+        # security_manager) now register their own callbacks directly inside
+        # entity._init_params / _init_volatiles / _init_skills /
+        # _init_security_manager via entity.bind_endpoint_callbacks().
+        # The entity itself registers its own @remote_service methods in __init__.
+        #
+        # StateManager is module-specific: create it here so its @remote_actionServer
+        # callbacks are bound before the orchestrator activates the transport.
         from .state.state_manager import StateManager  # local import to avoid circular deps
         state_manager = StateManager(entity)
-        logger.debug("state_manager_pre_created_for_callback_binding")
+        logger.debug("state_manager_created")
 
-        _callback_sources: list[Any] = [entity]
-        if hasattr(entity, 'param_manager') and entity.param_manager is not None:
-            _callback_sources.append(entity.param_manager)
-        if hasattr(entity, 'security_manager') and entity.security_manager is not None:
-            _callback_sources.append(entity.security_manager)
-        if hasattr(entity, 'volatile') and entity.volatile is not None:
-            _callback_sources.append(entity.volatile)
-        _callback_sources.append(state_manager)
+        # Bind StateManager callbacks into the EndpointRegistry.
+        entity.bind_endpoint_callbacks(state_manager)
+        logger.debug("state_manager_callbacks_bound")
 
-        for component in _callback_sources:
-            bound = entity.bind_interface_callbacks(component, base_interfaces)
-            bound_count = sum(1 for v in bound.values() if v)
-            if bound_count:
-                logger.info(
-                    "blueprint_callbacks_bound",
-                    component=type(component).__name__,
-                    bound=bound_count,
-                    total=len(bound),
-                )
+        # # BLUEPRINT STRATEGY — Phase 2: bind callbacks before registering interfaces
+        # # Interface definitions (JSON metadata) are separated from implementations
+        # # (entity methods). We bind here so set_interfaces creates real queryables.
+        # # StateManager must be created HERE so its @remote_actionServer callbacks
+        # # (request_lc_suspend, request_lc_resume) are bound before set_interfaces()
+        # # is called. Creating it after build_base() would cause ValueError because
+        # # the action server would have no callbacks registered.
+        # from .state.state_manager import StateManager  # local import to avoid circular deps
+        # state_manager = StateManager(entity)
+        # logger.debug("state_manager_pre_created_for_callback_binding")
+#
+        # _callback_sources: list[Any] = [entity]
+        # if hasattr(entity, 'param_manager') and entity.param_manager is not None:
+        # _callback_sources.append(entity.param_manager)
+        # if hasattr(entity, 'security_manager') and entity.security_manager is not None:
+        # _callback_sources.append(entity.security_manager)
+        # if hasattr(entity, 'volatile') and entity.volatile is not None:
+        # _callback_sources.append(entity.volatile)
+        # _callback_sources.append(state_manager)
+#
+        # for component in _callback_sources:
+        # bound = entity.bind_interface_callbacks(component, base_interfaces)
+        # bound_count = sum(1 for v in bound.values() if v)
+        # if bound_count:
+        # logger.info(
+        # "blueprint_callbacks_bound",
+        # component=type(component).__name__,
+        # bound=bound_count,
+        # total=len(bound),
+        # )
+#
+        # # Phase 3: register with transport (callbacks now bound → creates real queryables)
+        # logger.debug("setting_entity_interfaces")
+        # await entity.set_interfaces(base_interfaces)
+        # logger.info("entity_interfaces_set", count=len(base_interfaces))
+#
+#
 
-        # Phase 3: register with transport (callbacks now bound → creates real queryables)
-        logger.debug("setting_entity_interfaces")
-        await entity.set_interfaces(base_interfaces)
-        logger.info("entity_interfaces_set", count=len(base_interfaces))
-        
+        # ── Removed: bind_interface_callbacks / set_interfaces ───────────────────
+        # The EndpointOrchestrator handles transport activation automatically once
+        # the EndpointRegistry has all callbacks, the ManifestResolver has loaded
+        # the *.meta.json definitions, and the SchemaResolver has resolved schemas.
+
+        logger.debug("endpoint_orchestrator_will_activate_transports")
         # Create database storage
         logger.debug("creating_db_storage")
         await create_db_storage(entity)

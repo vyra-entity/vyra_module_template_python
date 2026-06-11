@@ -445,7 +445,7 @@ class RemoteRuntimeProxy(PluginRuntime):
     module's ``ui_function_call`` service instead of executing WASM locally.
 
     The transport is an implementation detail (currently Zenoh via
-    InterfaceFactory).  ``GatewayWasmRuntimePool`` selects a local
+    TransportProviderFactory).  ``GatewayWasmRuntimePool`` selects a local
     ``GatewayWasmRuntime`` or a ``RemoteRuntimeProxy`` transparently — the
     caller always sees the same ``start / stop / call / on_event`` interface.
 
@@ -468,7 +468,7 @@ class RemoteRuntimeProxy(PluginRuntime):
         if self._started:
             return
         try:
-            from vyra_base.com.core.factory import InterfaceFactory  # type: ignore[import]
+            from vyra_base.com.core.factory import TransportProviderFactory  # type: ignore[import]
 
             target_name = (self._module_name or "").strip()
             target_module_name = target_name
@@ -481,7 +481,7 @@ class RemoteRuntimeProxy(PluginRuntime):
             elif target_name:
                 target_module_id = target_name
 
-            self._client = await InterfaceFactory.create_client(
+            self._client = await TransportProviderFactory.create_client(
                 name="ui_function_call",
                 module_name=target_module_name,
                 module_id=target_module_id,

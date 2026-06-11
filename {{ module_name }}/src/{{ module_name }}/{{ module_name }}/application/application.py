@@ -17,7 +17,7 @@ from vyra_base.core.entity import VyraEntity
 from vyra_base.com import remote_service
 
 from ..taskmanager import TaskManager
-from ..interface import auto_register_interfaces
+from ..interface import register_endpoint_callbacks
 from .. import container_injection
 
 logger = get_logger(__name__)
@@ -68,12 +68,12 @@ class Component(OperationalStateMachine):
         self.internal_usermanager = None
         self.usermanager_detector = None
     
-    async def set_interfaces(self):
+    async def register_endpoints(self):
         """
         Setup @remote_service interfaces in VyraEntity.
         Automatically registers all methods decorated with @remote_service.
         """
-        await auto_register_interfaces(self.entity, callback_parent=self)
+        register_endpoint_callbacks(self.entity, callback_parent=self)
     
     @remote_service()
     async def initialize(self, request: Any=None, response: Any=None) -> bool:

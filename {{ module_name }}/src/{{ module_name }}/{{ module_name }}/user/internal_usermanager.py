@@ -27,7 +27,7 @@ except ImportError:
         return _bcrypt.checkpw(password.encode(), hashed.encode())
 
 from .tb_users import User, UserRole, UserLevel
-from ..interface import auto_register_interfaces
+from ..interface import register_endpoint_callbacks
 
 logger = get_logger(__name__)
 
@@ -62,9 +62,9 @@ class InternalUserManager:
         
         logger.info("✅ Internal User Manager initialized")
     
-    async def set_interfaces(self):
+    async def register_endpoints(self):
         """Register ROS2 callable interfaces"""
-        await auto_register_interfaces(
+        register_endpoint_callbacks(
             self.entity,
             callback_parent=self
         )
