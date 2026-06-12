@@ -158,7 +158,7 @@ async def setup_statemanager(entity: VyraEntity, state_manager: StateManager) ->
     # Initialize state manager
     logger.debug("state_manager_created", state_manager_type=type(state_manager).__name__)
     
-    await state_manager.setup_interfaces()
+    await state_manager.register_endpoints()
 
     await state_manager.initialization_start()
 

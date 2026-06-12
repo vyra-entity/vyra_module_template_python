@@ -1095,7 +1095,6 @@ async def build_base():
             "build_base_complete",
             module=entity.module_entry.name,
             uuid=entity.module_entry.uuid,
-            interface_count=len(base_interfaces)
         )
         log_function_result(
             logger,
