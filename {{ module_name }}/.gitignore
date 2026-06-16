@@ -64,3 +64,4 @@ dist/*
 !.env.example
 *.pyc
 *.sqlite
+*.whl
