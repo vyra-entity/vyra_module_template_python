@@ -738,9 +738,109 @@ fi
 echo "===================================="
 
 # =============================================================================
+# Frontend Restore (bind mount hides image-built assets; vyra-network is internal)
+# =============================================================================
+echo "=== CHECKING frontend/ DIRECTORY ==="
+
+restore_frontend_dist_from_backup() {
+    if [ ! -d "/opt/vyra/frontend_dist_backup" ]; then
+        return 1
+    fi
+
+    echo "📦 Restoring frontend/dist from image backup..."
+    mkdir -p /workspace/frontend/dist
+    cp -a /opt/vyra/frontend_dist_backup/. /workspace/frontend/dist/
+    chown -R vyrauser:vyrauser /workspace/frontend/dist
+    echo "✅ frontend/dist restored from image backup"
+    return 0
+}
+
+frontend_node_modules_ready() {
+    [ -x "/workspace/frontend/node_modules/.bin/vite" ]
+}
+
+restore_frontend_node_modules_from_backup() {
+    if [ ! -d "/opt/vyra/frontend_node_modules_backup" ]; then
+        return 1
+    fi
+
+    if [ ! -x "/opt/vyra/frontend_node_modules_backup/.bin/vite" ]; then
+        echo "❌ Image backup at /opt/vyra/frontend_node_modules_backup is invalid (missing .bin/vite)"
+        return 1
+    fi
+
+    echo "📦 Restoring frontend/node_modules from image backup..."
+    rm -rf /workspace/frontend/node_modules
+    cp -a /opt/vyra/frontend_node_modules_backup /workspace/frontend/node_modules
+    chown -R vyrauser:vyrauser /workspace/frontend/node_modules
+
+    if ! frontend_node_modules_ready; then
+        echo "❌ Restored frontend/node_modules is invalid (missing node_modules/.bin/vite)"
+        return 1
+    fi
+
+    echo "✅ frontend/node_modules restored from image backup"
+    return 0
+}
+
+FRONTEND_ASSET_COUNT=0
+if [ -d "/workspace/frontend/dist" ]; then
+    FRONTEND_ASSET_COUNT=$(find /workspace/frontend/dist -type f \( -name "*.js" -o -name "*.css" \) 2>/dev/null | wc -l)
+fi
+
+if [ "$FRONTEND_ASSET_COUNT" -eq 0 ]; then
+    if ! restore_frontend_dist_from_backup; then
+        echo "❌ frontend/dist is empty and no image backup found at /opt/vyra/frontend_dist_backup"
+        echo "💡 Rebuild the module image: bash tools/vyra_up.sh"
+        exit 1
+    fi
+else
+    echo "✅ frontend/dist already contains built assets ($FRONTEND_ASSET_COUNT JS/CSS files)"
+fi
+
+if [ "${VYRA_DEV_MODE:-false}" = "true" ]; then
+    if ! frontend_node_modules_ready; then
+        if [ -d "/workspace/frontend/node_modules" ]; then
+            echo "⚠️  Incomplete frontend/node_modules detected (vite missing) — removing broken install"
+            rm -rf /workspace/frontend/node_modules
+        fi
+        if ! restore_frontend_node_modules_from_backup; then
+            echo "❌ VYRA_DEV_MODE=true requires node_modules but no valid image backup found"
+            echo "💡 Module containers cannot reach npm registry (internal overlay network)"
+            echo "💡 Rebuild the module image: bash tools/vyra_up.sh"
+            exit 1
+        fi
+    else
+        echo "✅ frontend/node_modules ready (vite binary present)"
+    fi
+fi
+
+echo "===================================="
+
+# =============================================================================
 # Supervisord Service Configuration
 # =============================================================================
 echo "=== CONFIGURING SUPERVISORD SERVICES ==="
+
+# Start Vite in background after frontend assets are restored locally (no network required).
+start_vite_dev_server() {
+    if [ ! -f "/workspace/frontend/package.json" ]; then
+        echo "⏭️  No frontend/package.json found — skipping Vite Dev Server"
+        return 0
+    fi
+
+    if ! frontend_node_modules_ready; then
+        echo "❌ Cannot start Vite: /workspace/frontend/node_modules/.bin/vite not found"
+        return 1
+    fi
+
+    echo "🔥 Starting Vite Dev Server on port 3000..."
+    (
+        cd /workspace/frontend || exit 1
+        exec ./node_modules/.bin/vite --host 0.0.0.0 --port 3000
+    ) >> /workspace/log/vite.log 2>&1 &
+    echo "✅ Vite Dev Server started (log: /workspace/log/vite.log)"
+}
 
 # Check Development Mode
 if [ "${VYRA_DEV_MODE:-false}" = "true" ]; then
@@ -754,28 +854,9 @@ if [ "${VYRA_DEV_MODE:-false}" = "true" ]; then
 
         # Disable Nginx in dev mode
         ENABLE_FRONTEND_WEBSERVER=false
-        
-        # Install npm dependencies if needed
-        if [ ! -d "/workspace/frontend/node_modules" ] && [ -f "/workspace/frontend/package.json" ]; then
-            echo "📦 Installing npm dependencies..."
-            cd /workspace/frontend
-            npm install
-            cd /workspace
-        fi
-        
-        # Start Vite Dev Server in background (only if package.json exists)
-        if [ -f "/workspace/frontend/package.json" ]; then
-            echo "🔥 Starting Vite Dev Server on port 3000..."
-            cd /workspace/frontend
-            nohup npm run dev -- --host 0.0.0.0 --port 3000 > /workspace/log/vite.log 2>&1 &
-            VITE_PID=$!
-            echo "✅ Vite Dev Server started (PID: $VITE_PID)"
-            echo "   Frontend URL: http://localhost:3000"
-            echo "   Log: /workspace/log/vite.log"
-            cd /workspace
-        else
-            echo "⏭️  No frontend/package.json found — skipping Vite Dev Server"
-        fi
+
+        start_vite_dev_server
+        echo "   Frontend URL: http://localhost:3000"
     else
         echo "⚠️  npm not available - falling back to Nginx with pre-built frontend"
         echo "   (Set VYRA_DEV_MODE=false or use development base image for Vite hot reload)"
@@ -794,48 +875,8 @@ if [ "${VYRA_DEV_MODE:-false}" = "true" ]; then
 
 else
     echo "🏭 PRODUCTION MODE — Using Nginx with pre-built frontend"
-    
-    # Check if frontend is built (dist folder should have JS/CSS files, not just index.html)
-    if [ -d "/workspace/frontend/dist" ]; then
-        ASSET_COUNT=$(find /workspace/frontend/dist -type f \( -name "*.js" -o -name "*.css" \) 2>/dev/null | wc -l)
-        
-        if [ "$ASSET_COUNT" -eq 0 ]; then
-            echo "⚠️  Frontend dist/ folder exists but is empty (no JS/CSS assets)"
-            
-            # Check if we have Node.js available (dev image)
-            if command -v npm >/dev/null 2>&1; then
-                echo "🔨 Building frontend with Vite (npm run build)..."
-                cd /workspace/frontend
-                
-                # Install dependencies if node_modules missing
-                if [ ! -d "node_modules" ]; then
-                    echo "📦 Installing npm dependencies first..."
-                    npm install
-                fi
-                
-                # Build the frontend
-                if npm run build; then
-                    echo "✅ Frontend build completed successfully"
-                else
-                    echo "❌ Frontend build failed"
-                    exit 1
-                fi
-                
-                cd /workspace
-            else
-                echo "❌ ERROR: Node.js not available in production image"
-                echo "💡 Solution: Build frontend before deployment or use dev image"
-                echo "   Run locally: cd modules/$MODULE_NAME/frontend && npm run build"
-                exit 1
-            fi
-        else
-            echo "✅ Frontend already built ($ASSET_COUNT JS/CSS assets found)"
-        fi
-    else
-        echo "❌ ERROR: /workspace/frontend/dist directory not found"
-        echo "💡 Frontend must be built before starting in production mode"
-        exit 1
-    fi
+    FRONTEND_ASSET_COUNT=$(find /workspace/frontend/dist -type f \( -name "*.js" -o -name "*.css" \) 2>/dev/null | wc -l)
+    echo "✅ Frontend ready for Nginx ($FRONTEND_ASSET_COUNT JS/CSS assets)"
 fi
 
 # Configure Nginx (Frontend Webserver) - only in production mode

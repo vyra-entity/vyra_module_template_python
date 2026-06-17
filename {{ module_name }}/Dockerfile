@@ -203,17 +203,22 @@ RUN if [ "${VYRA_SLIM:-false}" = "true" ]; then \
 RUN mkdir -p ./storage/sros2_keystore
 
 RUN --mount=type=cache,target=/root/.npm,sharing=locked \
-    if [ -d "frontend" ] && [ -f "frontend/package.json" ] && [ -d "frontend/src/views" ] && [ "$(ls -A frontend/src/views)" ]; then \
+    if [ -d "frontend" ] && [ -f "frontend/package.json" ] && [ -d "frontend/src" ] && [ "$(ls -A frontend/src)" ]; then \
         cd frontend && \
-        # npm install @vue/eslint-config-typescript@latest eslint@latest --save-dev && \
         npm install && \
         npm run build && \
+        mkdir -p /opt/vyra/frontend_dist_backup && \
+        cp -a dist/. /opt/vyra/frontend_dist_backup/ && \
+        rm -rf /opt/vyra/frontend_node_modules_backup && \
+        cp -a node_modules /opt/vyra/frontend_node_modules_backup && \
+        test -x /opt/vyra/frontend_node_modules_backup/.bin/vite && \
         rm -rf node_modules && \
         cd ..; \
     else \
         echo "⚠️  Skipping frontend build (template or incomplete structure)"; \
-        mkdir -p frontend/dist && \
+        mkdir -p frontend/dist /opt/vyra/frontend_dist_backup /opt/vyra/frontend_node_modules_backup; \
         echo '<!DOCTYPE html><html><body><h1>Frontend Template</h1></body></html>' > frontend/dist/index.html; \
+        cp frontend/dist/index.html /opt/vyra/frontend_dist_backup/index.html; \
     fi
 
 # Normalize vyra_base to a fixed staging path.
@@ -273,6 +278,10 @@ COPY --from=builder /tmp/module_interfaces_staging/ /tmp/module_interfaces_stagi
 # Backup install/ directory for volume mount scenarios
 # When workspace is mounted as volume, install/ from image is hidden
 COPY --from=builder --chown=vyrauser:vyrauser /opt/vyra/install_backup /opt/vyra/install_backup
+
+# Backup frontend assets for volume mount scenarios (vyra-network is internal — no npm registry access)
+COPY --from=builder --chown=vyrauser:vyrauser /opt/vyra/frontend_dist_backup /opt/vyra/frontend_dist_backup
+COPY --from=builder --chown=vyrauser:vyrauser /opt/vyra/frontend_node_modules_backup /opt/vyra/frontend_node_modules_backup
 
 # Create runtime directories
 RUN mkdir -p log/ros2 log/nginx storage

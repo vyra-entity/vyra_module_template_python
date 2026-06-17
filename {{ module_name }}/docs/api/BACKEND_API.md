@@ -587,7 +587,7 @@ Real-time operation status updates
 
 **Connection**:
 ```javascript
-const ws = new WebSocket('wss://localhost:8443/ws/operations');
+const ws = new WebSocket('ws://localhost:8443/ws/operations');
 
 ws.onmessage = (event) => {
   const data = JSON.parse(event.data);

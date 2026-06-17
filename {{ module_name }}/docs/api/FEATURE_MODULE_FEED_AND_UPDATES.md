@@ -355,7 +355,7 @@ docker exec -it $(docker ps -qf "name=redis") redis-cli
 SUBSCRIBE module_feed_channel
 
 # Check WebSocket connection
-wscat -c wss://localhost/ws/module_feed
+wscat -c ws://localhost/ws/module_feed
 ```
 
 ## Known Limitations

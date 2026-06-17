@@ -628,7 +628,7 @@ labels:
   - "traefik.http.routers.modulemanager-api.rule=PathPrefix(`/api/{module_name}/`)"
   - "traefik.http.routers.modulemanager-api.service=modulemanager-api"
   - "traefik.http.services.modulemanager-api.loadbalancer.server.port=8443"
-  - "traefik.http.services.modulemanager-api.loadbalancer.server.scheme=https"
+  - "traefik.http.services.modulemanager-api.loadbalancer.server.scheme=http"
 ```
 
 ### Development vs Production
