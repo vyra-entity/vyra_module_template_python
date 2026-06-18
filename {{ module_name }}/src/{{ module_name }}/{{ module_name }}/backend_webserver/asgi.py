@@ -75,7 +75,7 @@ except ImportError as e:
             })
             await send({
                 'type': 'http.response.body',
-                'body': f'{{"error": "Could not import backend_webserver: {e}"}}'.encode('utf-8'),
+                'body': f'{% raw %}{{"error": "Could not import backend_webserver: {e}"}}{% endraw %}'.encode('utf-8'),
             })
     
     logger.error("Using fallback error application")

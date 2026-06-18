@@ -1,5 +1,5 @@
 """
-Global Dependency Injection Container for V2 ModuleManager
+Global Dependency Injection Container for V.Y.R.A. Modules
 
 This module provides a global container for sharing VyraEntity and Component
 instances across different parts of the application (ROS2 core, REST API, etc.)

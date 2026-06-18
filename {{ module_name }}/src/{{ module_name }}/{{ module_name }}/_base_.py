@@ -61,7 +61,7 @@ def _get_workspace_root() -> Path:
         # four-ancestor walk points directly at the workspace root.
         # When running from the colcon install tree the walk resolves to
         # install/<pkg>/lib/ which is wrong — fall back to cwd() which
-        # startup_core.sh guarantees is /workspace.
+        # startup_slim_core.sh guarantees is /workspace.
         candidate = Path(__file__).parent.parent.parent.parent
         if (candidate / "pyproject.toml").exists():
             return candidate
@@ -399,10 +399,7 @@ async def _create_base_interfaces() -> list[FunctionConfigEntry]:
 
 async def _load_storage_config() -> dict[str, Any]:
     """
-    Load the storage configuration from config/storage_config.ini file.
-    
-    In runtime (FULL mode), loads from /workspace/config/storage_config.ini.
-    In development (SLIM mode), loads from the workspace root config/ directory.
+    Load the storage configuration from /workspace/config/storage_config.ini file.
     
     Returns:
         Storage configuration dictionary
@@ -414,21 +411,18 @@ async def _load_storage_config() -> dict[str, Any]:
     log_function_call(logger, function="_load_storage_config", package=PACKAGE_NAME)
     
     try:
-        # Try workspace-level config first (runtime path)
-        workspace_root = _get_workspace_root()
-        config_path = workspace_root / 'config' / 'storage_config.ini'
+        config_path = _get_workspace_root() / 'config' / 'storage_config.ini'
         
-        if config_path.exists():
-            logger.debug("loading_storage_config_from_workspace", path=str(config_path))
-            config = await FileReader.open_ini_file(config_path)
-        else:
-            # Fall back to package resource (development mode)
-            logger.debug("workspace_config_not_found_trying_resource", workspace_path=str(config_path))
-            config = await load_resource(
-                PACKAGE_NAME,
-                Path('config', 'storage_config.ini')
+        if not config_path.exists():
+            logger.error(
+                "storage_config_not_found",
+                path=str(config_path)
+            )
+            raise FileNotFoundError(
+                f"Storage configuration file not found at {config_path}"
             )
         
+        config = await FileReader.open_ini_file(config_path)
         log_function_result(
             logger,
             success=True,
@@ -996,12 +990,14 @@ async def build_base():
         # entity methods to DataSpace but doesn't create ROS2 services.
         # We need to create the actual ROS2 services by loading interfaces with callbacks.
 
-        # Register interface package paths so VyraEntity / InterfaceFactory can locate
-        # ROS2 message types and Protobuf schemas at runtime.
-        # The installed ament package lives under install/{MODULE_NAME}_interfaces/
+        # Register interface package paths with ManifestResolver and SchemaResolver.
+        # The installed source/package lives under /workspace/src/{module}_interfaces.
         interfaces_install_path = Path(f"/workspace/src/{entity.module_entry.name}_interfaces")
+        module_name = entity.module_entry.name
+        interfaces_pkg = f"{module_name}_interfaces"
+
         if interfaces_install_path.exists():
-            # New API: registers with ManifestResolver + SchemaResolver
+            # New API: registers with ManifestResolver + keeps legacy registry in sync
             entity.add_manifest_paths([interfaces_install_path])
             entity.add_schema_paths([interfaces_install_path])
             logger.info(
@@ -1014,14 +1010,23 @@ async def build_base():
                 path=str(interfaces_install_path)
             )
 
-        # ── Removed: _create_base_interfaces (now handled by ManifestResolver) ──
-        # logger.debug("creating_base_interfaces")
-        # base_interfaces: list[Any] = await _create_base_interfaces()
+        # Load interface definitions via the new load_interface_definitions function
+        # (replaces _create_base_interfaces).  Returns FunctionConfigEntry list for
+        # backward-compatible orchestration during the transition period.
+        # from .interface import load_interface_definitions as _load_iface_defs
+        # logger.debug("loading_interface_definitions")
+        # base_interfaces: list[Any] = await _load_iface_defs(
+        #     module_name=module_name,
+        #     interfaces_pkg=interfaces_pkg,
+        #     interfaces_base_path=interfaces_install_path
+        #     if interfaces_install_path.exists()
+        #     else Path(f"/workspace/src/{interfaces_pkg}"),
+        # )
         # interface_names = [i.functionname for i in base_interfaces]
         # logger.info(
-        #     "base_interfaces_created",
+        #     "interface_definitions_loaded",
         #     count=len(base_interfaces),
-        #     interfaces=interface_names
+        #     interfaces=interface_names,
         # )
 
         # Phase 2: bind callbacks for module-specific components.
@@ -1029,12 +1034,12 @@ async def build_base():
         # Entity-internal components (param_manager, volatile, skill_manager,
         # security_manager) now register their own callbacks directly inside
         # entity._init_params / _init_volatiles / _init_skills /
-        # _init_security_manager via entity.bind_endpoint_callbacks().
+        # _init_security_manager via entity._bind_endpoint_callbacks().
         # The entity itself registers its own @remote_service methods in __init__.
         #
         # StateManager is module-specific: create it here so its @remote_actionServer
-        # callbacks are bound before the orchestrator activates the transport.
-        from .state.state_manager import StateManager  # local import to avoid circular deps
+        # callbacks are bound before set_interfaces() activates the transport.
+        from .state.state_manager import StateManager
         state_manager = StateManager(entity)
         logger.debug("state_manager_created")
 
@@ -1042,57 +1047,67 @@ async def build_base():
         entity.bind_endpoint_callbacks(state_manager)
         logger.debug("state_manager_callbacks_bound")
 
-        # # BLUEPRINT STRATEGY — Phase 2: bind callbacks before registering interfaces
-        # # Interface definitions (JSON metadata) are separated from implementations
-        # # (entity methods). We bind here so set_interfaces creates real queryables.
-        # # StateManager must be created HERE so its @remote_actionServer callbacks
-        # # (request_lc_suspend, request_lc_resume) are bound before set_interfaces()
-        # # is called. Creating it after build_base() would cause ValueError because
-        # # the action server would have no callbacks registered.
-        # from .state.state_manager import StateManager  # local import to avoid circular deps
-        # state_manager = StateManager(entity)
-        # logger.debug("state_manager_pre_created_for_callback_binding")
-#
+        # ── Removed (now handled inside entity._init_* methods) ──────────────
         # _callback_sources: list[Any] = [entity]
-        # if hasattr(entity, 'param_manager') and entity.param_manager is not None:
-        # _callback_sources.append(entity.param_manager)
-        # if hasattr(entity, 'security_manager') and entity.security_manager is not None:
-        # _callback_sources.append(entity.security_manager)
+        # if hasattr(entity, 'parameter') and entity.parameter is not None:
+        #     _callback_sources.append(entity.parameter)
+        # if hasattr(entity, 'security') and entity.security is not None:
+        #     _callback_sources.append(entity.security)
         # if hasattr(entity, 'volatile') and entity.volatile is not None:
-        # _callback_sources.append(entity.volatile)
-        # _callback_sources.append(state_manager)
-#
+        #     _callback_sources.append(entity.volatile)
+        # if hasattr(entity, 'skill') and entity.skill is not None:
+        #     _callback_sources.append(entity.skill)
+        # if hasattr(entity, 'state_machine') and entity.state_machine is not None:
+        #     _callback_sources.append(entity.state_machine)
+        #
         # for component in _callback_sources:
-        # bound = entity.bind_interface_callbacks(component, base_interfaces)
-        # bound_count = sum(1 for v in bound.values() if v)
-        # if bound_count:
-        # logger.info(
-        # "blueprint_callbacks_bound",
-        # component=type(component).__name__,
-        # bound=bound_count,
-        # total=len(bound),
-        # )
-#
-        # # Phase 3: register with transport (callbacks now bound → creates real queryables)
-        # logger.debug("setting_entity_interfaces")
-        # await entity.set_interfaces(base_interfaces)
-        # logger.info("entity_interfaces_set", count=len(base_interfaces))
-#
-#
+        #     from vyra_base.com.core.decorators import get_decorated_methods
+        #     decorated = get_decorated_methods(component)
+        #     for method_info in decorated:
+        #         fn_name = method_info.get("name") or getattr(method_info.get("method"), "__name__", None)
+        #         method = method_info.get("method") or method_info
+        #         cb_type = method_info.get("callback_type", "default")
+        #         if fn_name and callable(method):
+        #             try:
+        #                 entity.endpoint_registry.bind_callback(fn_name, method, cb_type)
+        #             except Exception as exc:
+        #                 logger.debug(
+        #                     "blueprint_callback_bind_warning",
+        #                     component=type(component).__name__,
+        #                     name=fn_name,
+        #                     error=str(exc),
+        #                 )
+        #
+        # ── Backward-compat bind_interface_callbacks loop also removed ────────
+        # for component in _callback_sources:
+        #     bound = entity.bind_interface_callbacks(component, base_interfaces)
+        #     bound_count = sum(1 for v in bound.values() if v)
+        #     if bound_count:
+        #         logger.info(
+        #             "blueprint_callbacks_bound",
+        #             component=type(component).__name__,
+        #             bound=bound_count,
+        #             total=len(bound),
+        #         )
 
         # ── Removed: bind_interface_callbacks / set_interfaces ───────────────────
         # The EndpointOrchestrator handles transport activation automatically once
         # the EndpointRegistry has all callbacks, the ManifestResolver has loaded
         # the *.meta.json definitions, and the SchemaResolver has resolved schemas.
+        #
+        # bound = entity.bind_interface_callbacks(state_manager, base_interfaces)
+        # await entity.set_interfaces(base_interfaces)
 
         logger.debug("endpoint_orchestrator_will_activate_transports")
+        
         # Create database storage
         logger.debug("creating_db_storage")
         await create_db_storage(entity)
         logger.info("db_storage_created")
 
         logger.info(
-            "build_base_complete",
+            "build_base complete",
+            endpoint_count=len(entity.endpoint_registry.list_all()),
             module=entity.module_entry.name,
             uuid=entity.module_entry.uuid,
         )

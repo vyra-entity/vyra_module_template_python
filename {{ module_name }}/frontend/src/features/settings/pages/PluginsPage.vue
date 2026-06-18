@@ -26,7 +26,7 @@
     <div v-else-if="resolveError" class="plugins-settings__empty">
       <i class="pi pi-exclamation-triangle" style="font-size: 2rem; color: #f59e0b" />
       <p>Plugin-Daten konnten nicht geladen werden.</p>
-      <p class="plugins-settings__empty-hint">{{ resolveError }}</p>
+      <p class="plugins-settings__empty-hint">{% raw %}{{ resolveError }}{% endraw %}</p>
     </div>
 
     <div v-else-if="pluginSections.length === 0" class="plugins-settings__empty">
@@ -45,8 +45,8 @@
       >
         <div class="plugins-section__header">
           <div>
-            <h3 class="plugins-section__title">{{ section.title }}</h3>
-            <p class="plugins-section__subtitle">{{ section.subtitle }}</p>
+            <h3 class="plugins-section__title">{% raw %}{{ section.title }}{% endraw %}</h3>
+            <p class="plugins-section__subtitle">{% raw %}{{ section.subtitle }}{% endraw %}</p>
           </div>
           <Tag :value="`${section.groups.length} Plugins`" severity="secondary" class="text-xs" />
         </div>
@@ -78,9 +78,9 @@
                 />
               </div>
               <div class="plugin-row__meta">
-                <div class="plugin-row__name">{{ plugin.title }}</div>
+                <div class="plugin-row__name">{% raw %}{{ plugin.title }}{% endraw %}</div>
                 <div class="plugin-row__id">
-                  <code>{{ plugin.pluginId }}</code>
+                  <code>{% raw %}{{ plugin.pluginId }}{% endraw %}</code>
                   <Tag :value="`v${plugin.version}`" severity="secondary" class="text-xs" />
                   <Tag
                     :value="plugin.scopeType"
@@ -125,7 +125,7 @@
                       v-for="sid in uniqueSlotLabels(slot)"
                       :key="sid"
                       class="slot-row__label"
-                    >{{ sid }}</span>
+                    >{% raw %}{{ sid }}{% endraw %}</span>
                   </div>
                   <Tag
                     v-if="slot.slot_type"
@@ -162,7 +162,7 @@
                 </div>
                 <div class="slot-row__actions">
                   <span class="slot-row__status" :class="slot.is_active ? 'slot-row__status--active' : 'slot-row__status--inactive'">
-                    {{ slot.is_active ? 'Aktiv' : 'Inaktiv' }}
+                    {% raw %}{{ slot.is_active ? 'Aktiv' : 'Inaktiv' }}{% endraw %}
                   </span>
                 </div>
                 <div v-if="requiresCommunicationBinding(slot)" class="slot-row__binding">
@@ -179,7 +179,7 @@
                       :key="option.value"
                       :value="option.value"
                     >
-                      {{ option.label }}
+                      {% raw %}{{ option.label }}{% endraw %}
                     </option>
                   </select>
                   <Button
@@ -314,7 +314,9 @@ function isModuleAssignedSlot(entry: UiManifestEntry): boolean {
 }
 
 function requiresCommunicationBinding(entry: UiManifestEntry): boolean {
-  return ['MODULE', 'BLUEPRINT', 'GLOBAL'].includes(entry.scope_type)
+  // GLOBAL frontend-only plugins (e.g. sdp-system-info) have no WASM host module.
+  if (entry.scope_type === 'GLOBAL') return false
+  return ['MODULE', 'BLUEPRINT', 'INSTANCE'].includes(entry.scope_type)
 }
 
 function hasBindingChanged(entry: UiManifestEntry): boolean {
@@ -565,10 +567,38 @@ async function saveBinding(entry: UiManifestEntry): Promise<void> {
   pending.add(entry.comp_id)
   savingBindings.value = pending
   try {
-    await mmApi.patch(`/plugin_admin_service/ui-component-bindings/${entry.comp_id}`, {
+    await mmApi.patch(`/plugin_admin_service/ui-component-bindings/${encodeURIComponent(entry.comp_id)}`, {
       communication_module_name: nextValue || null,
     })
     await doRefresh()
+  } catch (error: any) {
+    const status = Number(error?.response?.status ?? 0)
+    const isNotFound = status === 404
+
+    // Handle stale comp_id references by refreshing and retrying with the newest resolve result.
+    if (isNotFound) {
+      await doRefresh()
+
+      const refreshedEntry = allEntries.value.find((candidate) => {
+        return (
+          candidate.assignment_id === entry.assignment_id
+          && candidate.plugin_id === entry.plugin_id
+          && candidate.slot_id === entry.slot_id
+          && candidate.scope_type === entry.scope_type
+          && (candidate.scope_target ?? '') === (entry.scope_target ?? '')
+        )
+      })
+
+      if (refreshedEntry && refreshedEntry.comp_id !== entry.comp_id) {
+        await mmApi.patch(`/plugin_admin_service/ui-component-bindings/${encodeURIComponent(refreshedEntry.comp_id)}`, {
+          communication_module_name: nextValue || null,
+        })
+        await doRefresh()
+        return
+      }
+    }
+
+    resolveError.value = error?.response?.data?.detail ?? error?.message ?? 'Kommunikationsmodul konnte nicht gespeichert werden.'
   } finally {
     const updated = new Set(savingBindings.value)
     updated.delete(entry.comp_id)

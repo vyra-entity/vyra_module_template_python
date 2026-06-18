@@ -9,10 +9,13 @@ import sys
 
 # Initialize structured logging FIRST
 from .logging_config import configure_logging, get_logger, log_exception, log_call
+from vyra_base.build_info import log_build_info
+from vyra_base.com.core.factory import TransportProviderFactory
 
 # Configure logging before any other imports
 configure_logging()
 logger = get_logger(__name__)
+log_build_info(logger)
 
 # Now import ROS2 conditionally
 VYRA_SLIM = os.getenv('VYRA_SLIM', 'false').lower() == 'true'
@@ -106,7 +109,14 @@ async def _graceful_shutdown_async() -> None:
         except Exception as e:
             log_exception(logger, e, context={"operation": "cancel_all_shutdown"})
 
-    # 3. Shutdown ROS2
+    # 3. Shutdown transport providers (Zenoh queryables, sessions, …)
+    try:
+        await TransportProviderFactory.shutdown_all()
+        logger.info("transport_providers_shutdown_complete")
+    except Exception as e:
+        log_exception(logger, e, context={"operation": "transport_shutdown"})
+
+    # 4. Shutdown ROS2
     if not VYRA_SLIM and rclpy and rclpy.ok():
         try:
             logger.info("shutting_down_ros2", reason=sig_name)
@@ -684,6 +694,12 @@ async def runner() -> None:
                 logger.debug("rclpy_not_running")
         else:
             logger.debug("skipping_ros2_cleanup", reason="slim_mode")
+
+        try:
+            await TransportProviderFactory.shutdown_all()
+            logger.info("transport_providers_shutdown_complete")
+        except Exception as e:
+            log_exception(logger, e, context={"operation": "transport_shutdown"})
             
         if taskmanager:
             logger.debug("final_task_cancellation")

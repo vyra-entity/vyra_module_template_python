@@ -8,7 +8,7 @@
         "displayname": "Get State",
         "description": "Returns the full 3-layer state snapshot (lifecycle, operational, health) with metadata.",
         "filetype": [
-            "VModuleState.proto"
+            "VBASEState.proto"
         ],
         "params": [],
         "returns": [
@@ -64,7 +64,7 @@
         "displayname": "Get Lifecycle State",
         "description": "Returns only the current lifecycle layer state.",
         "filetype": [
-            "VModuleState.proto"
+            "VBASEState.proto"
         ],
         "params": [],
         "returns": [
@@ -102,7 +102,7 @@
         "displayname": "Get Operational State",
         "description": "Returns only the current operational layer state.",
         "filetype": [
-            "VModuleState.proto"
+            "VBASEState.proto"
         ],
         "params": [],
         "returns": [
@@ -140,7 +140,7 @@
         "displayname": "Get Health State",
         "description": "Returns only the current health layer state.",
         "filetype": [
-            "VModuleState.proto"
+            "VBASEState.proto"
         ],
         "params": [],
         "returns": [
@@ -178,7 +178,7 @@
         "displayname": "Get Last Error State",
         "description": "Returns the last recorded error context including error history.",
         "filetype": [
-            "VModuleState.proto"
+            "VBASEState.proto"
         ],
         "params": [],
         "returns": [
@@ -234,7 +234,7 @@
         "displayname": "Get State Summary",
         "description": "Returns a human-readable one-line status summary with derived flags.",
         "filetype": [
-            "VModuleState.proto"
+            "VBASEState.proto"
         ],
         "params": [],
         "returns": [
@@ -308,7 +308,7 @@
         "displayname": "Get State History",
         "description": "Returns recent state-change history entries, optionally filtered by layer and limited in count.",
         "filetype": [
-            "VModuleState.proto"
+            "VBASEState.proto"
         ],
         "params": [
             {
@@ -365,7 +365,7 @@
         "displayname": "Get Log History",
         "description": "Return recent log lines from the in-memory ring buffer. Used by the Dashboard Logs tab which polls this service periodically via SSE.",
         "filetype": [
-            "VModuleState.proto"
+            "VBASEGetLogHistory.proto"
         ],
         "params": [
             {

@@ -472,7 +472,7 @@ async def {client_func_name}(socket_path: str = None):
     # Create stub
     client.stub = {module_name}.{stub_name}(client.channel)
     
-    logger.info(f"🔗 Connected to {{socket_path}}")
+    logger.info(f"🔗 Connected to {% raw %}{{socket_path}}{% endraw %}")
     return client
 
 '''
