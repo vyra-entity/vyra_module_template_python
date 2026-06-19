@@ -10,14 +10,12 @@
 #   3. Renames/moves the current module directory to the canonical layout:
 #        <parent>/<module_name>_<uuid>/<version>/
 #   4. Optionally builds the Docker image (BUILD_AFTER_COPY=true)
-#   5. Optionally publishes to the local repository (PUBLISH_TO_REPO=true)
 #
 # Usage (invoked by copier _tasks; executed inside the newly-created module dir):
-#   bash tools/post_copier_setup.sh [--build] [--publish]
+#   bash tools/post_copier_setup.sh [--build]
 #
 # Environment variables (alternative to flags):
 #   BUILD_AFTER_COPY=true      → runs quick_rebuild_module.sh
-#   PUBLISH_TO_REPO=true       → runs publish_to_repo.sh
 # ==============================================================================
 set -e
 
@@ -28,15 +26,13 @@ TOOLS_DIR="$MODULE_DIR/tools"
 # Parse flags
 # ---------------------------------------------------------------------------
 BUILD=false
-PUBLISH=false
+
 for arg in "$@"; do
     case "$arg" in
         --build)   BUILD=true ;;
-        --publish) PUBLISH=true ;;
     esac
 done
 [[ "${BUILD_AFTER_COPY:-false}" == "true" ]] && BUILD=true
-[[ "${PUBLISH_TO_REPO:-false}" == "true" ]] && PUBLISH=true
 
 # ---------------------------------------------------------------------------
 # 1. Read module metadata
@@ -201,16 +197,6 @@ if [ "$BUILD" = "true" ]; then
             || echo "⚠️  Build failed. Manual: cd $WORKSPACE && ./tools/quick_rebuild_module.sh $MODULE_NAME --all-variants"
         cd "$NEW_MODULE_DIR"
     fi
-fi
-
-# ---------------------------------------------------------------------------
-# 6. Optionally publish to local repository
-# ---------------------------------------------------------------------------
-if [ "$PUBLISH" = "true" ]; then
-    echo ""
-    echo "📤 Publishing to local repository..."
-    bash "$NEW_MODULE_DIR/tools/publish_to_repo.sh" \
-        || echo "⚠️  Repository publish failed. Manual: cd $NEW_MODULE_DIR && ./tools/publish_to_repo.sh"
 fi
 
 echo ""

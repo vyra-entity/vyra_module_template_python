@@ -114,6 +114,8 @@ _exclude:
   - ".git"
   - ".git/**"
   - ".github/**"
+  - ".vscode/**"
+  - "tools/**"
   - "{{ module_name }}/build/**"
   - "{{ module_name }}/install/**"
   - "log"

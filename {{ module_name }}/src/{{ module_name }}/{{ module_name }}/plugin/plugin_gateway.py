@@ -24,7 +24,7 @@ PluginGateway
       Service so that other modules (and RemoteRuntimeProxy instances
       running in other modules) can call local WASM plugins.
     - **Consumer** — holds a Vyra Transport client to ``plugin/resolve_plugins``
-      (self-call to {{ module_name }}/PluginManager) and writes the result
+      (self-call to <module_name>/PluginManager) and writes the result
       to ``plugin/cache/plugin_manifest.json``.
 """
 
@@ -34,8 +34,7 @@ import asyncio
 import inspect
 import json
 import logging
-import ssl
-import urllib.request
+import re
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -49,6 +48,8 @@ if TYPE_CHECKING:
     from vyra_base.core import VyraEntity
 
 logger = logging.getLogger(__name__)
+
+_INSTANCE_SUFFIX_RE = re.compile(r"_[0-9a-fA-F]{32}$")
 
 # ---------------------------------------------------------------------------
 # Optional wasmtime dependency
@@ -330,7 +331,7 @@ class PluginGateway:
 
         gateway = PluginGateway()
         gateway.setup()                          # reads entity from container_injection
-        await gateway.set_interfaces()           # registers @remote_service handlers
+        await gateway.register_endpoints()        # registers @remote_service handlers
         container_injection.set_plugin_gateway(gateway)
         taskmanager.add_task(plugin_gateway_runner)
     """
@@ -345,6 +346,7 @@ class PluginGateway:
         self._own_module_name: str = ""
         self._own_module_id: str = ""
         self._manifest_cache: dict = {}  # In-memory manifest cache (avoids disk I/O)
+        self._module_instance_cache: dict[str, str] = {}
 
     # ------------------------------------------------------------------
     # Lifecycle
@@ -358,18 +360,18 @@ class PluginGateway:
         from .gateway_wasm_runtime import GatewayWasmRuntimePool
         self.entity = container_injection.get_entity()
         module_entry = getattr(self.entity, "module_entry", None)
-        self._own_module_name = getattr(module_entry, "name", "") or "{{ module_name }}"
+        self._own_module_name = getattr(module_entry, "name", "")
         self._own_module_id = getattr(module_entry, "uuid", "") or ""
         self._linker_factory = LinkerFactory(gateway=self)
         self._runtime_pool = GatewayWasmRuntimePool(gateway=self)
         logger.info("✅ PluginGateway: setup complete (module=%s)", self._own_module_name)
 
     async def register_endpoints(self) -> None:
-        """Register @remote_service decorated methods on the entity."""
+        """Register all @remote_service callbacks with the entity."""
         if self.entity is None:
-            raise RuntimeError("PluginGateway.setup() must be called before set_interfaces()")
+            raise RuntimeError("PluginGateway.setup() must be called before register_endpoints()")
         register_endpoint_callbacks(self.entity, callback_parent=self)
-        logger.info("✅ PluginGateway: interfaces registered")
+        logger.info("✅ PluginGateway: endpoints registered")
 
     async def _setup_resolve_client(self) -> None:
         """
@@ -391,6 +393,8 @@ class PluginGateway:
         else:
             target_module_name = full_instance_name
             target_module_id = full_instance_name
+
+        logger.debug("PluginGateway: setting up resolve client for target module '%s' (id='%s')", target_module_name, target_module_id)
 
         try:
             self._resolve_client = await TransportProviderFactory.create_client(
@@ -495,6 +499,7 @@ class PluginGateway:
         module_name: str | None = None,
         module_id: str | None = None,
         p_id: str | None = None,
+        request_source: str = "frontend",
     ) -> dict:
         """
         Call ``plugin/resolve_plugins`` via Vyra transport self-call, update the
@@ -505,6 +510,7 @@ class PluginGateway:
         :param module_name:  Requesting module name for slot-scope filtering.
         :param module_id:    Requesting module instance ID.
         :param p_id:         Optional direct filter on plugin pool entry ID.
+        :param request_source: Request source (frontend/backend), forwarded to PluginManager.
         :returns:            The resolve_plugins response dict.
         """
         # --- Local fast-path ---------------------------------------------------
@@ -520,6 +526,7 @@ class PluginGateway:
                     module_name=module_name or scope_target or self._own_module_name,
                     module_id=module_id or self._own_module_id,
                     p_id=p_id,
+                    request_source=request_source,
                 )
                 self._manifest_cache = result
                 return result
@@ -538,7 +545,10 @@ class PluginGateway:
             "module_name":  module_name or self._own_module_name,
             "module_id":    module_id or self._own_module_id,
             "p_id":         p_id,
+            "request_source": request_source,
         }
+
+        logger.debug(f"PluginGateway.resolve_plugins: calling resolve_client with request: {request}")
 
         result: dict = {}
         if self._resolve_client is not None:
@@ -553,6 +563,9 @@ class PluginGateway:
 
         if not result or "ui_slots" not in result:
             logger.warning("PluginGateway.resolve_plugins: empty/invalid result from remote")
+            cached = self.get_manifest()
+            if cached and "ui_slots" in cached:
+                return cached
             return self._empty_manifest(scope_type, scope_target)
 
         # Update in-memory cache
@@ -691,32 +704,132 @@ class PluginGateway:
         if self._runtime_pool is None:
             raise RuntimeError("PluginGateway not set up — call setup() first")
 
-        # Check manifest cache for routing information
-        manifest = self.get_manifest()
-        ui_slots: dict = manifest.get("ui_slots", {})
+        def _find_resolved_plugin_entry(manifest: dict[str, Any]) -> dict[str, Any] | None:
+            slots = manifest.get("ui_slots", {}) if isinstance(manifest, dict) else {}
+            if not isinstance(slots, dict):
+                return None
+            for slot_entries in slots.values():
+                if not isinstance(slot_entries, list):
+                    continue
+                for entry in slot_entries:
+                    if isinstance(entry, dict) and entry.get("plugin_id") == plugin_id:
+                        return entry
+            return None
+
+        def module_base_name(name: str | None) -> str:
+            text = (name or "").strip()
+            if not text:
+                return ""
+            return _INSTANCE_SUFFIX_RE.sub("", text)
+
+        # Refresh manifest cache so scope-target routing works even when the
+        # in-memory cache is cold.
+        own_base = module_base_name(self._own_module_name) or self._own_module_name
+        try:
+            await self.resolve_plugins(scope_type="MODULE", scope_target=own_base)
+        except Exception as exc:
+            logger.debug("PluginGateway.call_plugin: resolve refresh failed: %s", exc)
+
+        # MODULE resolve can miss INSTANCE-scoped cross-module plugins.
+        # If the requested plugin is not present, refresh with INSTANCE scope.
+        cached_manifest = self.get_manifest()
+        if _find_resolved_plugin_entry(cached_manifest) is None:
+            try:
+                await self.resolve_plugins(
+                    scope_type="INSTANCE",
+                    scope_target=own_base,
+                    module_name=own_base,
+                    module_id=self._own_module_id,
+                    request_source="frontend",
+                )
+            except Exception as exc:
+                logger.debug("PluginGateway.call_plugin: instance resolve refresh failed: %s", exc)
+
+        # Resolve cache from plugin/resolve_plugins (not plugin manifest.yaml).
+        # ui_slots is optional and mainly used to derive nfs path hints.
+        resolved_manifest = self.get_manifest()
+        logger.debug("PluginGateway.call_plugin: resolved manifest from cache: %s", resolved_manifest)
+        ui_slots_raw = resolved_manifest.get("ui_slots", {}) if isinstance(resolved_manifest, dict) else {}
+        ui_slots: dict[str, Any] = ui_slots_raw if isinstance(ui_slots_raw, dict) else {}
+        plugin_metadata_raw = (
+            resolved_manifest.get("plugin_metadata", [])
+            if isinstance(resolved_manifest, dict)
+            else []
+        )
+        plugin_metadata: list[dict[str, Any]] = (
+            plugin_metadata_raw if isinstance(plugin_metadata_raw, list) else []
+        )
+        plugin_entry = _find_resolved_plugin_entry(resolved_manifest)
         hosting_module: str | None = None
+        scope_target_module: str | None = None
         resolved_nfs_path: Path | None = Path(nfs_path) if nfs_path else None
 
-        # Find the plugin entry in any slot to get hosting_module_name + nfs path
-        for slot_entries in ui_slots.values():
-            for entry in slot_entries:
-                if entry.get("plugin_id") == plugin_id:
-                    hosting_module = entry.get("hosting_module_name")
-                    if resolved_nfs_path is None:
-                        nfs_js = entry.get("nfs_js_path", "")
-                        if nfs_js:
-                            resolved_nfs_path = Path(nfs_js).parent.parent
-                    break
-            if hosting_module:
-                break
+        # Prefer concrete routing information from resolve_plugins ui slot entry.
+        if plugin_entry is not None:
+            hosting_module = plugin_entry.get("hosting_module_name")
+            scope_target_module = (
+                str(plugin_entry.get("communication_module_name") or "").strip()
+                or str(plugin_entry.get("scope_target") or "").strip()
+                or None
+            )
+            if resolved_nfs_path is None:
+                nfs_js = str(plugin_entry.get("nfs_js_path") or "")
+                if nfs_js:
+                    resolved_nfs_path = Path(nfs_js).parent.parent
+
+        # Fallback: read target from plugin metadata scope.
+        for item in plugin_metadata:
+            metadata = item.get("metadata_json") or {}
+            item_plugin_id = item.get("plugin_name_id") or metadata.get("id")
+            if item_plugin_id != plugin_id:
+                continue
+            scope = metadata.get("scope") or {}
+            if str(scope.get("type", "")).upper() in {"MODULE", "INSTANCE"}:
+                target = str(scope.get("target") or "").strip()
+                if target and not scope_target_module:
+                    scope_target_module = target
+            break
+
+        own_base = module_base_name(self._own_module_name)
+        scope_target_base = module_base_name(scope_target_module)
+
+        logger.debug(f"OWN_BASE: {own_base}, TARGET: {scope_target_module} (base={scope_target_base}), HOSTING_MODULE: {hosting_module}, RESOLVED NFS PATH: {resolved_nfs_path}")
+
+        remote_module_name: str | None = None
+        if scope_target_module and scope_target_base != own_base:
+            remote_module_name = scope_target_module
+
+        # Fallback: if resolve cache is cold, read MODULE scope directly from
+        # manifest.yaml before attempting local runtime startup.
+        if not remote_module_name:
+            logger.debug("PluginGateway.call_plugin: no remote module target from resolve cache, checking manifest.yaml for MODULE scope")
+            if resolved_nfs_path is None:
+                resolved_nfs_path = await self._lookup_nfs_path(plugin_id)
+            manifest_file = resolved_nfs_path / "manifest.yaml"
+            if manifest_file.exists():
+                try:
+                    with manifest_file.open() as handle:
+                        plugin_manifest = yaml.safe_load(handle) or {}
+                    scope = plugin_manifest.get("scope") or {}
+                    if str(scope.get("type", "")).upper() in {"MODULE", "INSTANCE"}:
+                        target = str(scope.get("target") or "").strip()
+                        if target and module_base_name(target) != own_base:
+                            remote_module_name = target
+                except Exception as exc:
+                    logger.debug(
+                        "PluginGateway.call_plugin: could not read scope target from %s: %s",
+                        manifest_file,
+                        exc,
+                    )
 
         # Route: remote module → RemoteRuntimeProxy
-        if hosting_module and hosting_module != self._own_module_name:
+        if remote_module_name:
+            logger.debug("Call proxy for remote module '%s'", remote_module_name)
             return await self._runtime_pool.call(
                 plugin_id=plugin_id,
                 function_name=function_name,
                 data=data,
-                remote_module_name=hosting_module,
+                remote_module_name=remote_module_name,
             )
 
         # Local: resolve NFS path from DB if still unknown
@@ -734,11 +847,11 @@ class PluginGateway:
     async def _lookup_nfs_path(self, plugin_id: str) -> Path:
         """
         Look up the NFS path for a plugin via the ``plugin/get_nfs_path`` Zenoh
-        service exposed by ``v2_modulemanager``.
+        service exposed by ``<module_name>``.
 
         No direct database access is performed here.  The target
-        ``v2_modulemanager`` instance is determined by reading
-        ``labels.modulemanager.module_id`` from ``module_params.yaml``.
+        ``<module_name>`` instance is determined by reading
+        ``labels.<module_name>.module_id`` from ``module_params.yaml``.
 
         :raises RuntimeError: If the plugin is not found or the service is unavailable.
         """
