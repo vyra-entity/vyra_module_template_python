@@ -203,7 +203,8 @@ RUN if [ "${VYRA_SLIM:-false}" = "true" ]; then \
 RUN mkdir -p ./storage/sros2_keystore
 
 RUN --mount=type=cache,target=/root/.npm,sharing=locked \
-    if [ -d "frontend" ] && [ -f "frontend/package.json" ] && [ -d "frontend/src" ] && [ "$(ls -A frontend/src)" ]; then \
+    set -e; \
+    if [ -d "frontend" ] && [ -f "frontend/package.json" ] && [ -d "frontend/src" ] && [ "$(ls -A frontend/src)" ] && command -v npm >/dev/null 2>&1; then \
         cd frontend && \
         npm install && \
         npm run build && \
@@ -214,12 +215,17 @@ RUN --mount=type=cache,target=/root/.npm,sharing=locked \
         test -x /opt/vyra/frontend_node_modules_backup/.bin/vite && \
         rm -rf node_modules && \
         cd ..; \
+    elif [ -d "frontend/dist" ] && [ "$(ls -A frontend/dist 2>/dev/null)" ]; then \
+        echo "⚠️  npm not in builder image — using pre-built frontend/dist"; \
+        mkdir -p /opt/vyra/frontend_dist_backup /opt/vyra/frontend_node_modules_backup; \
+        cp -a frontend/dist/. /opt/vyra/frontend_dist_backup/; \
     else \
         echo "⚠️  Skipping frontend build (template or incomplete structure)"; \
         mkdir -p frontend/dist /opt/vyra/frontend_dist_backup /opt/vyra/frontend_node_modules_backup; \
         echo '<!DOCTYPE html><html><body><h1>Frontend Template</h1></body></html>' > frontend/dist/index.html; \
         cp frontend/dist/index.html /opt/vyra/frontend_dist_backup/index.html; \
-    fi
+    fi; \
+    mkdir -p /opt/vyra/frontend_dist_backup /opt/vyra/frontend_node_modules_backup
 
 # Normalize vyra_base to a fixed staging path.
 # The SLIM base image installs packages to site-packages while the full ROS2 base
