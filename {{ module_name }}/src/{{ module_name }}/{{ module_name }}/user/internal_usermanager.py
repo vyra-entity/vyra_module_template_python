@@ -11,7 +11,7 @@ from typing import Optional, Dict, Any
 
 from vyra_base.core.entity import VyraEntity
 from vyra_base.storage.db_manipulator import DbManipulator, DBReturnValue
-from vyra_base.storage.db_access import DBSTATUS
+from vyra_base.com.clients.sql import DBSTATUS
 from vyra_base.com import remote_service
 try:
     from vyra_base.helper.crypto_helper import hash_password_bcrypt, verify_password_bcrypt

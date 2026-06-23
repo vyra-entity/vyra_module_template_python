@@ -17,7 +17,7 @@ Usage:
 
 from typing import Any, Dict, Optional
 
-from vyra_base.com.transport.t_redis.communication import RedisClient
+from vyra_base.com.clients.redis import RedisClient
 
 from {{ module_name }}.logging_config import (
     get_logger,

@@ -906,7 +906,7 @@ async def create_db_storage(entity: VyraEntity) -> None:
     )
     
     try:
-        from vyra_base.storage.db_access import DbAccess
+        from vyra_base.com.clients.sql import DbAccess
 
         logger.debug("loading_storage_config")
         storage_config: dict[str, Any] = await _load_storage_config()
