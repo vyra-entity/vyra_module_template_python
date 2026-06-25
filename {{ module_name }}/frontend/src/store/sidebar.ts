@@ -46,6 +46,7 @@ const DEFAULT_SETTINGS_ITEMS: SettingsNavItem[] = [
   { id: 'settings-notifications', label: 'Benachrichtigungen', icon: 'pi pi-bell',      routeName: 'settings-notifications', priority: 80  },
   { id: 'settings-auth',          label: 'Authentifizierung',  icon: 'pi pi-lock',      routeName: 'settings-auth',          priority: 70  },
   { id: 'settings-plugins',        label: 'Plugins',            icon: 'pi pi-box',       routeName: 'settings-plugins',        priority: 60  },
+  { id: 'settings-about',          label: 'About',              icon: 'pi pi-info-circle', routeName: 'settings-about',          priority: 10  },
 ]
 
 export const useSidebarStore = defineStore('sidebar', () => {

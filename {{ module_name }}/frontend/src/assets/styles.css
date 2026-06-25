@@ -27,6 +27,16 @@
   --safe-area-right: env(safe-area-inset-right, 0px);
   --safe-area-bottom: env(safe-area-inset-bottom, 0px);
   --safe-area-left: env(safe-area-inset-left, 0px);
+
+  /* Light mode surface tokens (overridden by html.dark-mode) */
+  --surface-ground:   #f5f7fa;
+  --surface-section:  #ffffff;
+  --surface-card:     #ffffff;
+  --surface-overlay:  #ffffff;
+  --surface-border:   #e5e7eb;
+  --surface-hover:    rgba(0, 0, 0, 0.04);
+  --text-color:           #1f2937;
+  --text-color-secondary: #6b7280;
 }
 
 /* ── Dark Mode: map custom CSS variables to dark values ── */

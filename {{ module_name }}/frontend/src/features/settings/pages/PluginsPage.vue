@@ -58,23 +58,22 @@
             class="plugin-row"
           >
             <div class="plugin-row__header">
-              <div class="plugin-row__icon">
+              <div
+                class="plugin-row__icon"
+                :style="pluginIconBackground(plugin)"
+              >
                 <img
-                  v-if="plugin.icon && plugin.icon.startsWith('/')"
-                  :src="plugin.icon"
+                  v-if="pluginIconUrl(plugin)"
+                  :src="pluginIconUrl(plugin)!"
                   :alt="plugin.title"
                   width="32"
                   height="32"
-                />
-                <i
-                  v-else-if="plugin.icon"
-                  :class="plugin.icon"
-                  style="font-size: 1.5rem; color: var(--p-primary-color)"
+                  @error="onPluginIconError(plugin)"
                 />
                 <i
                   v-else
-                  class="pi pi-puzzle"
-                  style="font-size: 1.5rem; color: var(--p-primary-color)"
+                  :class="pluginIconClass(plugin)"
+                  :style="pluginIconStyle(plugin)"
                 />
               </div>
               <div class="plugin-row__meta">
@@ -211,6 +210,7 @@ import { pluginApi, type ResolvePluginsResponse, type UiManifestEntry } from '..
 import apiClient from '../../../api/http'
 import Button from 'primevue/button'
 import Tag from 'primevue/tag'
+import { isPrimeIcon, resolvePluginIconUrl, usePluginIcon } from '../../../composables/usePluginIcon'
 
 interface ModuleInstance {
   module_name: string
@@ -255,6 +255,39 @@ const currentInstanceTargets = ref(new Set<string>())
 const resolvedEntriesBySlot = ref<Record<string, UiManifestEntry[]>>({})
 const savingBindings = ref(new Set<string>())
 const bindingDrafts = ref<Record<string, string>>({})
+
+const brokenPluginIconKeys = ref(new Set<string>())
+
+function pluginIconCacheKey(plugin: PluginGroup): string {
+  return `${plugin.pluginId}@${plugin.version}`
+}
+
+function pluginIconUrl(plugin: PluginGroup): string | null {
+  if (brokenPluginIconKeys.value.has(pluginIconCacheKey(plugin))) return null
+  return resolvePluginIconUrl(plugin.icon, plugin.pluginId, plugin.version)
+}
+
+function pluginIconClass(plugin: PluginGroup): string {
+  if (plugin.icon && isPrimeIcon(plugin.icon)) return plugin.icon
+  return usePluginIcon(plugin.pluginId).iconClass
+}
+
+function pluginIconStyle(plugin: PluginGroup): Record<string, string> {
+  if (plugin.icon && isPrimeIcon(plugin.icon)) {
+    return { fontSize: '1.5rem', color: 'var(--p-primary-color)' }
+  }
+  const info = usePluginIcon(plugin.pluginId)
+  return { fontSize: '1.5rem', color: info.color }
+}
+
+function pluginIconBackground(plugin: PluginGroup): Record<string, string> {
+  if (pluginIconUrl(plugin)) return {}
+  return { background: usePluginIcon(plugin.pluginId).background }
+}
+
+function onPluginIconError(plugin: PluginGroup): void {
+  brokenPluginIconKeys.value.add(pluginIconCacheKey(plugin))
+}
 
 const isLoading = computed(() => refreshing.value && allEntries.value.length === 0)
 
@@ -677,7 +710,7 @@ onMounted(() => {
 
 .plugin-row {
   background: var(--surface-card);
-  border: 1px solid var(--surface-border);
+  border: 1px solid var(--p-surface-border, var(--surface-border, #e5e7eb));
   border-radius: 8px;
   padding: 1rem;
 }
@@ -728,7 +761,7 @@ onMounted(() => {
 }
 
 .plugin-row__slots {
-  border-top: 1px solid var(--surface-border);
+  border-top: 1px solid var(--p-surface-border, var(--surface-border, #e5e7eb));
   padding-top: 0.75rem;
   gap: 0.75rem;
 }
@@ -791,7 +824,7 @@ onMounted(() => {
 .slot-row__binding-select {
   width: 100%;
   min-height: 2.25rem;
-  border: 1px solid var(--surface-border);
+  border: 1px solid var(--p-surface-border, var(--surface-border, #e5e7eb));
   border-radius: 6px;
   background: var(--surface-card);
   color: var(--text-color);

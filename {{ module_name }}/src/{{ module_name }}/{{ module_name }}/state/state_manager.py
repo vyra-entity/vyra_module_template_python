@@ -52,11 +52,17 @@ from vyra_base.state.state_types import (
 )
 from vyra_base.state.unified import UnifiedStateMachine
 from vyra_base.defaults.entries import StateEntry
+from vyra_base.state.lifecycle_guards import (
+    RecoveryTimeoutTracker,
+    assert_suspend_allowed,
+    prepare_operational_for_recovery,
+)
+from vyra_base.lifecycle import TaskSupervisorConfig
+from vyra_base.helper.error_handler import ErrorTraceback
 
 # TYPE_CHECKING-only imports – not executed at runtime, so no rclpy/ament chain
 if TYPE_CHECKING:
     from vyra_base.core.entity import VyraEntity
-    from vyra_base.helper.error_handler import ErrorTraceback
 
 from .state_types import (
     LAYER_ACTIONS,
@@ -86,6 +92,7 @@ _DEFAULT_CONFIG: Dict[str, Any] = {
     "max_state_history_size": 50,
     "max_error_history_size": 10,
     "debug_transitions": False,
+    "task_supervisor": {},
 }
 
 
@@ -123,12 +130,16 @@ class StateManager:
         logger.info(f"📋 Module: {self.module_name}")
         logger.info(f"🆔 UUID:   {self.module_id}")
 
-        # ── 3-layer state machine ────────────────────────────────────────────
-        self._state_machine: UnifiedStateMachine = UnifiedStateMachine()
+        # ── 3-layer state machine (shared with VyraEntity) ───────────────────
+        self._state_machine: UnifiedStateMachine = entity.state_machine
         self._state_machine.on_any_change(self._on_state_change_template)
         self._state_machine.on_lifecycle_change(self._on_lifecycle_change)
         self._state_machine.on_operational_change(self._on_operational_change)
         self._state_machine.on_health_change(self._on_health_change)
+
+        self._recovery_tracker = RecoveryTimeoutTracker(
+            float(self._config.get("task_supervisor", {}).get("recovering_total_timeout_s", 120.0))
+        )
 
         # ── History / diagnostics ─────────────────────────────────────────────
         self._state_history: Deque[StateHistoryEntry] = deque(maxlen=_max_hist)
@@ -166,6 +177,11 @@ class StateManager:
     def state_machine(self) -> UnifiedStateMachine:
         """Direct access to the underlying UnifiedStateMachine."""
         return self._state_machine
+
+    @property
+    def task_supervisor_config(self) -> TaskSupervisorConfig:
+        """Task supervisor configuration from module_params.yaml."""
+        return TaskSupervisorConfig.from_dict(self._config.get("task_supervisor"))
 
     @property
     def broadcast_interval(self) -> float:
@@ -291,8 +307,13 @@ class StateManager:
 
     async def register_endpoints(self) -> None:
         """Register all Zenoh @remote_service handlers with the VyraEntity."""
+        if getattr(self, "_endpoints_registered", False):
+            logger.debug("StateManager: endpoints already registered, skipping")
+            return
+
         from ..interface import register_endpoint_callbacks  # lazy – needs ROS2 env
         register_endpoint_callbacks(self.entity, callback_parent=self)
+        self._endpoints_registered = True
         logger.info("✅ StateManager Zenoh interfaces registered")
 
     async def initialization_start(self) -> bool:
@@ -313,9 +334,16 @@ class StateManager:
             logger.info("🚀 Initialising module lifecycle…")
 
             prev = self.get_current_state()
+            lifecycle = self._state_machine.get_lifecycle_state()
 
-            self._state_machine.start(metadata={"source": "application"})
-            logger.info("  ✓ Lifecycle: INITIALIZING")
+            if lifecycle == LifecycleState.OFFLINE:
+                self._state_machine.start(metadata={"source": "application"})
+                logger.info("  ✓ Lifecycle: INITIALIZING")
+            else:
+                logger.info(
+                    "  ✓ Lifecycle already %s — skipping start()",
+                    lifecycle.value,
+                )
 
             current = self.get_current_state()
             self._record_history_diff(prev, current)
@@ -338,11 +366,18 @@ class StateManager:
         """Complete the startup sequence (for manual startup)."""
         try:
             prev = self.get_current_state()
+            lifecycle = self._state_machine.get_lifecycle_state()
 
-            self._state_machine.complete_initialization(
-                result={"container_ready": True}
-            )
-            
+            if lifecycle == LifecycleState.INITIALIZING:
+                self._state_machine.complete_initialization(
+                    result={"container_ready": True}
+                )
+            else:
+                logger.info(
+                    "  ✓ Lifecycle already %s — skipping complete_initialization()",
+                    lifecycle.value,
+                )
+
             current = self.get_current_state()
             self._record_history_diff(prev, current)
             return True
@@ -447,12 +482,21 @@ class StateManager:
 
     @remote_actionServer.on_goal(name="request_lc_suspend")
     async def _on_goal_suspend(self, goal_request: Any) -> bool:
-        """Accept suspend goal only if lifecycle is currently ACTIVE."""
+        """Accept suspend goal only if lifecycle is ACTIVE and operational is IDLE."""
         states = self._state_machine.get_all_states()
         if states["lifecycle"] != LifecycleState.ACTIVE.value:
             logger.warning(
                 f"⚠️  Reject suspend goal – lifecycle is {states['lifecycle']}, not ACTIVE"
             )
+            return False
+        try:
+            assert_suspend_allowed(
+                self._state_machine,
+                module_name=self.module_name,
+                module_id=self.module_id,
+            )
+        except Exception as exc:
+            logger.warning(f"⚠️  Reject suspend goal – {exc}")
             return False
         logger.info("✅ Suspend goal accepted")
         return True
@@ -834,6 +878,44 @@ class StateManager:
     async def broadcast_status(self) -> None:
         """Alias for :meth:`broadcast_state` (backward compatibility)."""
         await self.broadcast_state()
+
+    def trigger_task_recovery(
+        self,
+        reason: str,
+        task_name: str,
+        attempt: int,
+        max_attempts: int,
+    ) -> None:
+        """Enter lifecycle recovery due to task hang or crash."""
+        self._recovery_tracker.mark_recovery_started()
+        self._record_error(
+            f"Task '{task_name}' recovery: {reason} (attempt {attempt}/{max_attempts})",
+            {"task_name": task_name, "attempt": attempt, "reason": reason},
+        )
+        lifecycle = self._state_machine.get_lifecycle_state()
+        if lifecycle != LifecycleState.RECOVERING:
+            try:
+                self.execute_state_action(
+                    StateRequest(
+                        layer="lifecycle",
+                        action="enter_recovery",
+                        metadata={
+                            "reason": reason,
+                            "task_name": task_name,
+                            "attempt": attempt,
+                        },
+                    )
+                )
+            except Exception as exc:
+                logger.error(f"enter_recovery failed: {exc}")
+        try:
+            prepare_operational_for_recovery(
+                self._state_machine.fsm,
+                module_name=self.module_name,
+                module_id=self.module_id,
+            )
+        except Exception as exc:
+            logger.warning(f"prepare_operational_for_recovery: {exc}")
 
     # ─────────────────────────────────────────────────────────────────────────
     # Internal state-mutation helpers (called only by application code)

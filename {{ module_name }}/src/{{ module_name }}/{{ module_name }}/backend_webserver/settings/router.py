@@ -63,6 +63,46 @@ def _write_module_params(path: Path, payload: dict[str, Any]) -> None:
         raise HTTPException(status_code=500, detail=f"Could not write module_params.yaml: {exc}")
 
 
+def _resolve_module_data_path() -> Path | None:
+    """Locate ``.module/module_data.yaml`` in runtime/workspace locations."""
+    candidates = [Path("/workspace/.module/module_data.yaml"), Path.cwd() / ".module/module_data.yaml"]
+    for parent in Path(__file__).resolve().parents:
+        candidates.append(parent / ".module/module_data.yaml")
+
+    for path in candidates:
+        if path.exists() and path.is_file():
+            return path
+    return None
+
+
+def _load_about_info() -> dict[str, Any]:
+    """Return module metadata from ``.module/module_data.yaml``."""
+    info: dict[str, Any] = {}
+    data_path = _resolve_module_data_path()
+    if data_path is None:
+        return info
+
+    try:
+        with data_path.open("r", encoding="utf-8") as handle:
+            data = yaml.safe_load(handle) or {}
+    except (OSError, yaml.YAMLError):
+        return info
+
+    if isinstance(data, dict):
+        for key in ("name", "display_name", "version", "description", "author", "blueprints", "uuid"):
+            if key in data:
+                info[key] = data[key]
+    return info
+
+
+@router.get("/about")
+async def get_module_about(
+    _user: dict[str, Any] = Depends(get_current_user),
+) -> dict[str, Any]:
+    """Return module metadata for the About page."""
+    return {"success": True, "module": _load_about_info()}
+
+
 @router.get("/permissions")
 async def get_module_permissions(
     _user: dict[str, Any] = Depends(get_current_user),

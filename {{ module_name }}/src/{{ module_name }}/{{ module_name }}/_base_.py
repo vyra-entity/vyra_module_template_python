@@ -1045,6 +1045,7 @@ async def build_base():
 
         # Bind StateManager callbacks into the EndpointRegistry.
         entity.bind_endpoint_callbacks(state_manager)
+        state_manager._endpoints_registered = True
         logger.debug("state_manager_callbacks_bound")
 
         # ── Removed (now handled inside entity._init_* methods) ──────────────

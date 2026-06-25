@@ -9,6 +9,21 @@ export interface ModulePermissionsResponse {
   permissions: Record<string, unknown>
 }
 
+export interface ModuleAboutInfo {
+  name?: string
+  display_name?: string
+  version?: string
+  description?: string
+  author?: string
+  blueprints?: string
+  uuid?: string
+}
+
+export interface ModuleAboutResponse {
+  success: boolean
+  module: ModuleAboutInfo
+}
+
 class SettingsApi {
   private async _errorMessage(response: Response, fallback: string): Promise<string> {
     const ct = response.headers.get('content-type') ?? ''
@@ -42,6 +57,16 @@ class SettingsApi {
     })
     if (!response.ok) {
       throw new Error(await this._errorMessage(response, 'Failed to save module permissions'))
+    }
+    return response.json()
+  }
+
+  async getModuleAbout(): Promise<ModuleAboutResponse> {
+    const response = await fetch(`${API_BASE}/settings/about`, {
+      credentials: 'include',
+    })
+    if (!response.ok) {
+      throw new Error(await this._errorMessage(response, 'Failed to load module information'))
     }
     return response.json()
   }

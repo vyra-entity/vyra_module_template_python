@@ -137,7 +137,12 @@ async def application_runner() -> None:
     Starts the Component and keeps it running. Managed as an asyncio task by TaskManager.
     All dependencies are resolved via container_injection.
     """
-    await application.main()
+    taskmanager = container_injection.get_task_manager()
+    runner_task = asyncio.create_task(application.main())
+    while not runner_task.done():
+        taskmanager.touch_heartbeat("application_runner")
+        await asyncio.sleep(1.0)
+    await runner_task
     ErrorTraceback.check_error_exist() 
 
 
@@ -238,6 +243,11 @@ async def ros_spinner_runner(entity: VyraEntity) -> None:
             # filling the TCP backlog (Recv-Q ≈ 334) and causing Traefik 504s.
             await loop.run_in_executor(None, spin_fn)
             spin_count += 1
+            try:
+                tm = container_injection.get_task_manager()
+                tm.touch_heartbeat("ros_spinner_runner")
+            except Exception:
+                pass
             
             # Log periodic heartbeat (every x spins)
             if spin_count % 10000 == 0:
@@ -627,7 +637,10 @@ async def runner() -> None:
         # ── Start task supervision loop ────────────────────────────────────
         logger.info("starting_task_supervisor")
         await task_supervisor_looper(
-            taskmanager, statemanager, shutdown_event=shutdown_event
+            taskmanager,
+            statemanager,
+            supervisor_config=statemanager.task_supervisor_config,
+            shutdown_event=shutdown_event,
         )
         logger.info("task_supervisor_completed")
 
