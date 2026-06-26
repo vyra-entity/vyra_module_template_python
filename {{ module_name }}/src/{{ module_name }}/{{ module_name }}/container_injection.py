@@ -180,10 +180,15 @@ SERVICE_POLL_INTERVAL_S = 0.5
 
 
 async def _is_service_active(instance: Any) -> bool:
-    """True when a registered service instance reports ready (or has no health hook)."""
+    """True when a registered service instance reports ready (or has no health hook).
+
+    Only ``is_active`` and ``is_connected`` are used.  ``OperationalStateMachine.is_ready()``
+    reflects operational FSM state (Idle→Ready), not registry readiness — checking it during
+    ``initialize()`` would deadlock because the component is registered before READY is reached.
+    """
     if instance is None:
         return False
-    for attr in ("is_active", "is_connected", "is_ready"):
+    for attr in ("is_active", "is_connected"):
         checker = getattr(instance, attr, None)
         if callable(checker):
             result = checker()

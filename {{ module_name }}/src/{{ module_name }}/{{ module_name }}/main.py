@@ -140,7 +140,11 @@ async def application_runner() -> None:
     taskmanager = container_injection.get_task_manager()
     component = container_injection.get_component()
     if load_auto_start_enabled():
-        if not await auto_start_component(component):
+        auto_start_task = asyncio.create_task(auto_start_component(component))
+        while not auto_start_task.done():
+            taskmanager.touch_heartbeat("application_runner")
+            await asyncio.sleep(1.0)
+        if not auto_start_task.result():
             raise RuntimeError("Component auto-start failed — services not ready")
     else:
         logger.info("behavior.auto_start=false — component.initialize() deferred to manual trigger")
