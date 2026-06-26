@@ -10,7 +10,8 @@ from pathlib import Path
 from vyra_base import state
 from vyra_base.state import (
     UnifiedStateMachine,
-    OperationalStateMachine
+    OperationalStateMachine,
+    OperationalState,
 )
 from vyra_base.defaults.entries import StateEntry
 from vyra_base.core.entity import VyraEntity
@@ -96,8 +97,9 @@ class Component(OperationalStateMachine):
             self._state_heartbeat_task = asyncio.create_task(self._state_heartbeat_loop())
             logger.info("✅ StateFeed heartbeat started (5 s interval)")
 
+            container_injection.register_service("component", self)
             logger.info("✅ Component initialization complete")
-            return True
+            return await finalize_component_initialization(self, True)
             
         except Exception as e:
             logger.exception(f"❌ Component initialization failed: {e}")
@@ -255,74 +257,106 @@ class Component(OperationalStateMachine):
     #     return result
 
 
-async def main() -> None:
-    """
-    Main application entry point for {{ module_name }}.
-    
-    Loads configuration, initializes component, and manages lifecycle based on
-    module_params.yaml configuration.
-    
-    All dependencies (task_manager, state_manager, component) are resolved via
-    container_injection.
-    """
-    task_manager = container_injection.get_task_manager()
-    status_manager = container_injection.get_state_manager()
-    component = container_injection.get_component()
-    logger.info("🚀 Starting {{ module_name }}...")
-    
-    if not component:
-        logger.error("❌ Component not available from container injection")
-        return
-    
-    # Load module configuration
+SERVICE_WAIT_TIMEOUT_S = 30.0
+SERVICE_POLL_INTERVAL_S = 0.5
+
+
+def load_auto_start_enabled() -> bool:
+    """Read ``behavior.auto_start`` from ``.module/module_params.yaml``."""
     module_params_path = Path(".module/module_params.yaml")
     if not module_params_path.exists():
         logger.warning(f"⚠️  Module params not found at {module_params_path}, using defaults")
-        auto_start = True  # Default to auto-start
-    else:
-        with open(module_params_path, "r") as f:
-            module_params = yaml.safe_load(f)
-            auto_start = module_params.get("behavior", {}).get("auto_start", True)
-    
+        return True
+    with open(module_params_path, "r") as f:
+        module_params = yaml.safe_load(f) or {}
+    return module_params.get("behavior", {}).get("auto_start", True)
+
+
+async def finalize_component_initialization(component: Component, setup_ok: bool) -> bool:
+    """Wait until all ServiceRegistry services are active; ERROR on timeout."""
+    if not setup_ok:
+        return False
+    if await container_injection.wait_for_all_services(
+        SERVICE_WAIT_TIMEOUT_S, SERVICE_POLL_INTERVAL_S
+    ):
+        logger.info(
+            "✅ All services active: %s",
+            container_injection.list_registered_services(),
+        )
+        return True
+    inactive = await container_injection.get_inactive_services()
+    logger.error(
+        "❌ Service readiness timeout — inactive: %s, registered: %s",
+        inactive,
+        container_injection.list_registered_services(),
+    )
+    component._set_operational_state(OperationalState.ERROR)
+    return False
+
+
+async def auto_start_component(component: Component) -> bool:
+    """
+    Initialize the component when ``behavior.auto_start`` is enabled.
+
+    Waits until every ServiceRegistry entry is active before returning.
+    Idempotent when all services are already ready.
+    When ``auto_start`` is ``false``, returns without calling ``initialize()``.
+    """
+    if await container_injection.all_services_ready():
+        logger.debug("⏭️  auto_start skipped — all services already active")
+        return True
+
+    auto_start = load_auto_start_enabled()
     logger.info(f"📋 Configuration: auto_start={auto_start}")
-    
-    # Auto-start if configured
-    if auto_start:
-        # Check current operational state and component initialization status
-        current_state = component.get_operational_state()
-        logger.info(f"🔍 Current operational state: {current_state}")
 
-        if current_state.value == "Idle":
-            logger.info("🔄 Initializing component via initialize() method...")
-            
-            success = await component.initialize()
-            
-            if not success:
-                logger.error("❌ Component initialization failed")
-                if component.is_error():
-                    logger.error("💥 Component in ERROR state - manual reset required")
-        else:
-            # State is already READY but components not initialized (e.g., after recovery)
-            # Initialize components directly without state transition
-            logger.info(f"🔄 Component in state {current_state} but not initialized, initializing components directly...")
-            try:
-                # TODO: Implement initialization logic here if manually needed
-                
-                success = True
-            except Exception as e:
-                logger.exception(f"❌ Component initialization failed: {e}")
-                success = False
+    if not auto_start:
+        logger.info("⏸️  Auto-start disabled — component.initialize() deferred to manual trigger")
+        return True
 
-        
-        if success:
-            # Setup async components after initialization
-                        
-            logger.info("✅ Application setup complete - service running")
+    current_state = component.get_operational_state()
+    logger.info(f"🔍 Current operational state: {current_state}")
+
+    if current_state.value == "Idle":
+        logger.info("🔄 Initializing component via initialize() method...")
+        success = await component.initialize()
+    elif not await container_injection.all_services_ready():
+        logger.error(
+            "❌ Component in operational state %s but services not ready — "
+            "initialize() was not completed; transitioning to ERROR",
+            current_state,
+        )
+        component._set_operational_state(OperationalState.ERROR)
+        success = False
     else:
-        logger.info("⏸️  Auto-start disabled, waiting for manual initialization")
+        logger.info(f"⏭️  Component already in state {current_state}, skipping initialize()")
+        success = True
 
-    # Keep service running indefinitely
+    if not success:
+        logger.error("❌ Component initialization failed")
+        if component.is_error():
+            logger.error("💥 Component in ERROR state - manual reset required")
+        return False
+
+    if not await container_injection.all_services_ready():
+        inactive = await container_injection.get_inactive_services()
+        logger.error("❌ Services not active after initialize: %s", inactive)
+        component._set_operational_state(OperationalState.ERROR)
+        return False
+
+    logger.info("✅ Application setup complete — all services active")
+    return True
+
+
+async def main() -> None:
+    """
+    Main application entry point.
+
+    Keeps the service running. Component initialization is handled by
+    ``initialize_module()`` in main.py (auto_start or remote initialize()).
+    """
+    module_name = container_injection.get_entity().module_entry.name
+    logger.info(f"🚀 Application runner active for {module_name}")
     logger.info("♾️  Service running indefinitely...")
 
     while True:
-        await asyncio.sleep(10)
+        await asyncio.sleep(1)

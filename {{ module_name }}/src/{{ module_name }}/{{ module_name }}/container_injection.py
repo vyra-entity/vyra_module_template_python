@@ -34,6 +34,7 @@ Usage:
 
 from __future__ import annotations
 
+import asyncio
 from typing import TYPE_CHECKING, Any, Optional
 
 from dependency_injector import containers, providers
@@ -172,6 +173,55 @@ def has_service(name: str) -> bool:
 def list_registered_services() -> list[str]:
     """Gibt alle registrierten Dienstnamen zurück."""
     return _service_registry.list_services()
+
+
+SERVICE_WAIT_TIMEOUT_S = 30.0
+SERVICE_POLL_INTERVAL_S = 0.5
+
+
+async def _is_service_active(instance: Any) -> bool:
+    """True when a registered service instance reports ready (or has no health hook)."""
+    if instance is None:
+        return False
+    for attr in ("is_active", "is_connected", "is_ready"):
+        checker = getattr(instance, attr, None)
+        if callable(checker):
+            result = checker()
+            if asyncio.iscoroutine(result):
+                result = await result
+            return bool(result)
+    return True
+
+
+async def get_inactive_services() -> list[str]:
+    """Service names that are missing or not yet active/connected."""
+    inactive: list[str] = []
+    for name in list_registered_services():
+        instance = get_service(name)
+        if not await _is_service_active(instance):
+            inactive.append(name)
+    return inactive
+
+
+async def all_services_ready() -> bool:
+    """True when ServiceRegistry is non-empty and every entry is active."""
+    if not list_registered_services():
+        return False
+    return not await get_inactive_services()
+
+
+async def wait_for_all_services(
+    timeout_s: float = SERVICE_WAIT_TIMEOUT_S,
+    poll_interval_s: float = SERVICE_POLL_INTERVAL_S,
+) -> bool:
+    """Poll until all registered services are active or timeout expires."""
+    elapsed = 0.0
+    while elapsed < timeout_s:
+        if await all_services_ready():
+            return True
+        await asyncio.sleep(poll_interval_s)
+        elapsed += poll_interval_s
+    return False
 
 
 def provide_service(name: str):

@@ -32,7 +32,7 @@ else:
 
 from . import _base_
 from .application import application
-from .application.application import Component
+from .application.application import Component, auto_start_component, load_auto_start_enabled
 from .taskmanager import TaskManager, task_supervisor_looper
 from .state.state_manager import StateManager
 from .user.usermanager import UserManager
@@ -133,154 +133,22 @@ async def _graceful_shutdown_async() -> None:
 async def application_runner() -> None:
     """
     Main application logic runner.
-    
-    Starts the Component and keeps it running. Managed as an asyncio task by TaskManager.
-    All dependencies are resolved via container_injection.
+
+    Runs component auto-start (when enabled) then keeps application.main() alive.
+    Managed as an asyncio task by TaskManager.
     """
     taskmanager = container_injection.get_task_manager()
+    component = container_injection.get_component()
+    if load_auto_start_enabled():
+        if not await auto_start_component(component):
+            raise RuntimeError("Component auto-start failed — services not ready")
+    else:
+        logger.info("behavior.auto_start=false — component.initialize() deferred to manual trigger")
     runner_task = asyncio.create_task(application.main())
     while not runner_task.done():
         taskmanager.touch_heartbeat("application_runner")
         await asyncio.sleep(1.0)
     await runner_task
-    ErrorTraceback.check_error_exist() 
-
-
-async def plugin_gateway_runner() -> None:
-    """Long-running task that keeps the PluginGateway alive."""
-    from .plugin.plugin_gateway import PluginGateway
-    gateway: PluginGateway = container_injection.get_plugin_gateway()
-    await gateway.run()
-
-@log_call
-async def setup_statemanager(entity: VyraEntity, state_manager: StateManager) -> StateManager:
-    """
-    Initialize and configure the State Manager.
-    
-    Args:
-        entity: VyraEntity instance from core application
-        state_manager: Pre-built StateManager from build_base() — its @remote_actionServer
-            callbacks must be bound before set_interfaces() is called.
-        
-    Returns:
-        Configured StateManager instance
-        
-    Raises:
-        Exception: If state manager initialization fails
-    """
-    logger.info("state_manager_initializing")
-    
-    # Initialize state manager
-    logger.debug("state_manager_created", state_manager_type=type(state_manager).__name__)
-    
-    await state_manager.register_endpoints()
-
-    await state_manager.initialization_start()
-
-    logger.info("state_manager_interfaces_setup_complete")
-
-    return state_manager
-
-
-@log_call
-async def setup_usermanager(entity: VyraEntity) -> UserManager:
-    """
-    Initialize and configure the User Manager.
-    
-    Args:
-        entity: VyraEntity instance from core application
-        
-    Returns:
-        Configured UserManager instance
-        
-    Raises:
-        Exception: If user manager initialization fails
-    """
-    logger.info("user_manager_initializing")
-    
-    user_manager = UserManager(entity)
-    success = await user_manager.initialize()
-    
-    if not success:
-        logger.error("user_manager_initialization_failed")
-        raise RuntimeError("UserManager initialization failed")
-    
-    logger.info("user_manager_initialized")
-    return user_manager
-
-
-@log_call
-async def ros_spinner_runner(entity: VyraEntity) -> None:
-    """
-    Main ROS2 communication spinner.
-    
-    Handles the rclpy.spin_once loop for ROS2 message processing.
-    Only runs in normal (non-SLIM) mode.
-    
-    Args:
-        entity: VyraEntity containing the ROS2 node
-    """
-    if entity.node is None:
-        logger.error("ros_spinner_missing_node", reason="entity_node_none")
-        return
-    
-    logger.info("ros_spinner_starting", node_name=entity.node.get_name())
-    spin_count = 0
-    error_count = 0
-    
-    if rclpy is None:
-        logger.error("ros_spinner_called_without_rclpy", slim_mode=VYRA_SLIM)
-        return
-    
-    loop = asyncio.get_running_loop()
-    spin_fn = functools.partial(rclpy.spin_once, entity.node, timeout_sec=0.001)
-
-    while rclpy.ok():
-        try:
-            # Run spin_once in a thread-pool executor so it never blocks the
-            # asyncio event loop.  Without this, the 10 ms timeout_sec call
-            # prevented uvicorn from accepting TCP connections fast enough,
-            # filling the TCP backlog (Recv-Q ≈ 334) and causing Traefik 504s.
-            await loop.run_in_executor(None, spin_fn)
-            spin_count += 1
-            try:
-                tm = container_injection.get_task_manager()
-                tm.touch_heartbeat("ros_spinner_runner")
-            except Exception:
-                pass
-            
-            # Log periodic heartbeat (every x spins)
-            if spin_count % 10000 == 0:
-                logger.debug(
-                    "ros_spinner_heartbeat",
-                    spin_count=spin_count,
-                    error_count=error_count
-                )
-            
-            # Yield to other coroutines (uvicorn, etc.) between spins.
-            # sleep(0) only yields the scheduler but never forces an epoll I/O
-            # check, so we use a small real sleep (5 ms) to ensure uvicorn's
-            # transport callbacks get CPU time and CLOSE-WAIT connections are
-            # properly processed.
-            await asyncio.sleep(0.005)
-            
-        except Exception as spin_error:
-            error_count += 1
-            logger.error(
-                "ros_spin_error",
-                error=str(spin_error),
-                error_count=error_count,
-                spin_count=spin_count
-            )
-            if error_count > 10:
-                logger.critical(
-                    "ros_spinner_error_threshold_exceeded",
-                    error_count=error_count,
-                    threshold=10
-                )
-                raise
-    
-    logger.info("ros_spinner_finished", total_spins=spin_count, total_errors=error_count)
     ErrorTraceback.check_error_exist()
 
 @log_call
@@ -293,22 +161,34 @@ async def web_backend_runner() -> None:
     """
     logger.info("web_backend_initializing")
     
-    # Wait for container to be initialized
+    auto_start = load_auto_start_enabled()
     wait_count = 0
-    while not container_injection.is_initialized():
+    while not container_injection.is_initialized() or (
+        auto_start and not await container_injection.all_services_ready()
+    ):
         wait_count += 1
+        inactive = await container_injection.get_inactive_services()
         logger.debug(
             "waiting_for_container_init",
             wait_count=wait_count,
-            wait_time_seconds=wait_count * 0.5
+            wait_time_seconds=wait_count * 0.5,
+            auto_start=auto_start,
+            container_ready=container_injection.is_initialized(),
+            services_ready=await container_injection.all_services_ready(),
+            inactive_services=inactive,
+            registered_services=container_injection.list_registered_services(),
         )
         await asyncio.sleep(0.5)
-        
-        if wait_count > 60:  # 30 seconds timeout
+
+        if auto_start and wait_count > 60:
             logger.error(
                 "container_init_timeout",
                 wait_count=wait_count,
-                timeout_seconds=30
+                timeout_seconds=30,
+                auto_start=auto_start,
+                container_ready=container_injection.is_initialized(),
+                inactive_services=inactive,
+                registered_services=container_injection.list_registered_services(),
             )
             raise TimeoutError("Container initialization timeout after 30 seconds")
     
@@ -504,7 +384,8 @@ async def initialize_module(taskmanager: TaskManager) -> tuple[VyraEntity, State
     container_injection.set_plugin_bridge(plugin_bridge)
     logger.info("plugin_bridge_ready")
 
-    await statemanager.initialization_complete()  # Notify StateManager that initialization is complete (for manual startup)
+
+    await statemanager.initialization_complete()
 
     # Schedule application runner task
     logger.info("scheduling_application_runner_task")
