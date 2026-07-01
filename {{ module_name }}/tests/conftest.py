@@ -19,8 +19,7 @@ from unittest.mock import Mock, MagicMock
 
 # Configure test logging
 logging.basicConfig(
-    level=logging.DEBUG,
-    format='%(asctime)s - %(levelname)-8s - %(name)s - %(message)s'
+    level=logging.DEBUG, format="%(asctime)s - %(levelname)-8s - %(name)s - %(message)s"
 )
 
 # Required env for module imports in unit tests
@@ -43,7 +42,9 @@ def _stub_module(name: str, **attrs):
 # Optional dependencies not required for these unit tests
 _stub_module("zenoh")
 _stub_module("ament_index_python")
-_stub_module("ament_index_python.packages", get_package_share_directory=MagicMock(return_value="/mock/share"))
+_stub_module(
+    "ament_index_python.packages", get_package_share_directory=MagicMock(return_value="/mock/share")
+)
 _stub_module("lark")
 
 # Ensure source import paths for tests
@@ -65,6 +66,7 @@ import vyra_base  # noqa: F401
 # ============================================================================
 # Session-scoped fixtures (run once per test session)
 # ============================================================================
+
 
 @pytest.fixture(scope="session")
 def event_loop_policy():
@@ -89,7 +91,7 @@ def test_config():
         "database": {
             "type": "sqlite",
             "path": "/tmp/test_vyra_db/",
-            "name": "test_{{ module_name }}.db"
+            "name": "test_{{ module_name }}.db",
         },
         "ros2": {
             "node_name": "test_{{ module_name }}",
@@ -106,6 +108,7 @@ def test_config():
 # ============================================================================
 # Function-scoped fixtures (run once per test function)
 # ============================================================================
+
 
 @pytest.fixture
 def mock_redis_client():
@@ -157,6 +160,7 @@ def mock_vyra_entity(mock_ros2_node, mock_redis_client):
 # Test data helpers
 # ============================================================================
 
+
 @pytest.fixture
 def test_data_path(test_config):
     """Returns path to test data directory"""
@@ -167,7 +171,8 @@ def test_data_path(test_config):
 # Async utilities
 # ============================================================================
 
+
 @pytest.fixture
 def anyio_backend():
     """Use asyncio backend for pytest-asyncio"""
-    return 'asyncio'
+    return "asyncio"

@@ -27,16 +27,16 @@ logger = get_logger(__name__)
 class Component(OperationalStateMachine):
     """
     Base component class for {{ module_name }} application.
-    
+
     Provides operational state management following industrial automation
     best practices with automatic state transitions.
-    
+
     The Component uses the operational layer of the UnifiedStateMachine to manage
     its state (IDLE, READY, RUNNING, PAUSED, STOPPED, ERROR).
-    
+
     User-defined lifecycle methods are prefixed with 'on_' (on_initialize, on_pause, etc.)
     and are automatically wrapped by the metaclass to handle state transitions.
-    
+
     Public API methods are called without 'on_' prefix:
     - component.initialize()  -> calls on_initialize() with state management
     - component.pause()       -> calls on_pause() with state management
@@ -44,11 +44,16 @@ class Component(OperationalStateMachine):
     - component.stop()        -> calls on_stop() with state management
     - component.reset()       -> calls on_reset() with state management
     """
-    
-    def __init__(self, unified_state_machine: UnifiedStateMachine, entity: VyraEntity, task_manager: TaskManager):
+
+    def __init__(
+        self,
+        unified_state_machine: UnifiedStateMachine,
+        entity: VyraEntity,
+        task_manager: TaskManager,
+    ):
         """
         Initialize the Component with unified state machine and entity.
-        
+
         Args:
             unified_state_machine: The UnifiedStateMachine instance from StatusManager
             entity: The VyraEntity containing the ROS 2 node
@@ -56,39 +61,39 @@ class Component(OperationalStateMachine):
         """
         # Initialize parent OperationalStateMachine
         super().__init__(unified_state_machine.fsm)
-        
+
         self.entity = entity
         self.task_manager = task_manager
-        
+
         # Component instances
         # Define your instances here
         self._heartbeat_task: asyncio.Task | None = None
         self._state_heartbeat_task: asyncio.Task | None = None
-        
+
         # Sub-manager instances (set during initialize())
         self.internal_usermanager = None
         self.usermanager_detector = None
-    
+
     async def register_endpoints(self):
         """
         Setup @remote_service interfaces in VyraEntity.
         Automatically registers all methods decorated with @remote_service.
         """
         register_endpoint_callbacks(self.entity, callback_parent=self)
-    
+
     @remote_service()
-    async def initialize(self, request: Any=None, response: Any=None) -> bool:
+    async def initialize(self, request: Any = None, response: Any = None) -> bool:
         """
         Initialize the {{ module_name }} components.
-        
+
         State Transition: IDLE -> READY
         On Success: {{ module_name }} fully initialized and ready for operations
         On Failure: IDLE -> ERROR
-        
+
         Returns:
             bool: True on success, False on failure
         """
-        try:           
+        try:
             # Start periodic NewsFeed heartbeat (5 s interval)
             self._heartbeat_task = asyncio.create_task(self._heartbeat_loop())
             logger.info("✅ NewsFeed heartbeat started (5 s interval)")
@@ -100,7 +105,7 @@ class Component(OperationalStateMachine):
             container_injection.register_service("component", self)
             logger.info("✅ Component initialization complete")
             return await finalize_component_initialization(self, True)
-            
+
         except Exception as e:
             logger.exception(f"❌ Component initialization failed: {e}")
             return False
@@ -136,7 +141,7 @@ class Component(OperationalStateMachine):
                     current=str(self._state_machine.get_operational_state().value),
                     module_id=self.entity.module_entry.uuid,
                     module_name=self.entity.module_entry.name,
-                    timestamp=datetime.now()
+                    timestamp=datetime.now(),
                 )
                 await self.entity.state_feeder.feed(state_data)
             except Exception as e:
@@ -144,14 +149,14 @@ class Component(OperationalStateMachine):
             await asyncio.sleep(5.0)
 
     @remote_service()
-    async def pause(self, request: Any=None, response: Any=None) -> bool:
+    async def pause(self, request: Any = None, response: Any = None) -> bool:
         """
         Pause ongoing operations.
-        
+
         State Transition: RUNNING -> PAUSED
         On Success: Operations temporarily suspended
         On Failure: RUNNING -> ERROR
-        
+
         Returns:
             bool: True on success, False on failure
         """
@@ -161,16 +166,16 @@ class Component(OperationalStateMachine):
         # - Release temporary resources
         logger.info("⏸️  Component pause requested")
         return True  # Placeholder for actual implementation
-    
+
     @remote_service()
-    async def resume(self, request: Any=None, response: Any=None) -> bool:
+    async def resume(self, request: Any = None, response: Any = None) -> bool:
         """
         Resume from paused state.
-        
+
         State Transition: PAUSED -> READY
         On Success: {{ module_name }} operations resumed, operation counter reset
         On Failure: PAUSED -> ERROR
-        
+
         Returns:
             bool: True on success, False on failure
         """
@@ -180,16 +185,16 @@ class Component(OperationalStateMachine):
         # - Resume suspended operations
         logger.info("▶️  Component resume requested")
         return True
-    
+
     @remote_service()
-    async def stop(self, request: Any=None, response: Any=None) -> bool:
+    async def stop(self, request: Any = None, response: Any = None) -> bool:
         """
         Stop component operations cleanly.
-        
+
         State Transition: RUNNING/PAUSED -> STOPPED
         On Success: {{ module_name }} clean shutdown completed
         On Failure: -> ERROR
-        
+
         Returns:
             bool: True on success, False on failure
         """
@@ -208,15 +213,15 @@ class Component(OperationalStateMachine):
             logger.info("⏹️  Heartbeat loops cancelled")
 
         return True
-    
+
     @remote_service()
-    async def reset(self, request: Any=None, response: Any=None) -> bool:
+    async def reset(self, request: Any = None, response: Any = None) -> bool:
         """
         Reset component to initial state.
-        
+
         State Transition: STOPPED/ERROR -> IDLE
         On Success: Ready for re-initialization
-        
+
         Returns:
             bool: True on success, False on failure
         """
@@ -225,34 +230,34 @@ class Component(OperationalStateMachine):
         # - Release remaining resources
         # - Reset to initial configuration
         logger.info("🔄 Component reset requested")
-        
+
         return True
-    
+
     # @remote_service()
     # @state.operation
     # async def template_test(self, request: Any=None, response: Any=None) -> dict:
     #     """
     #     Template test function demonstrating @remote_service + @state.operation.
-        
+
     #     This function serves as a template showing how to combine both decorators:
     #     - @remote_service: Exposes method as ROS2 service
     #     - @state.operation: Automatic READY <-> RUNNING state management with reference counting
-        
+
     #     State Flow: READY -> RUNNING (counter++) -> execute -> RUNNING (counter--) -> READY (if counter=0)
-        
+
     #     Args:
     #         test_data: Optional test data dictionary
-            
+
     #     Returns:
     #         dict: Test result with status and data
     #     """
     #     test_data = request.test_data if request and hasattr(request, 'test_data') else {}
-        
+
     #     logger.info(f"🧪 Template test function called with data: {test_data}")
-        
+
     #     # TODO: Implement actual test logic here
     #     # This is just a template demonstration
-        
+
     #     logger.info(f"✅ Template test completed: {result['message']}")
     #     return result
 

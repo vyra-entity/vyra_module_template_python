@@ -23,8 +23,8 @@ from typing import Any, Callable, Coroutine, Dict, Optional, TypeVar, Union, cas
 from vyra_base.helper.env_handler import get_env_required
 
 # Type variables for generic decorator (separate for sync and async)
-F = TypeVar('F', bound=Callable[..., Any])
-AsyncF = TypeVar('AsyncF', bound=Callable[..., Coroutine[Any, Any, Any]])
+F = TypeVar("F", bound=Callable[..., Any])
+AsyncF = TypeVar("AsyncF", bound=Callable[..., Coroutine[Any, Any, Any]])
 
 
 # Environment variables for configuration
@@ -127,15 +127,11 @@ def load_logging_config(config_path: Path = None) -> Dict[str, Any]:
         )
 
     try:
-        with open(config_path, 'r') as f:
+        with open(config_path, "r") as f:
             config = json.load(f)
         return config
     except json.JSONDecodeError as e:
-        raise json.JSONDecodeError(
-            f"Invalid JSON in logging configuration: {e.msg}",
-            e.doc,
-            e.pos
-        )
+        raise json.JSONDecodeError(f"Invalid JSON in logging configuration: {e.msg}", e.doc, e.pos)
 
 
 def _patch_logging_config_for_format(config: Dict[str, Any]) -> Dict[str, Any]:
@@ -246,6 +242,7 @@ def get_logger(name: Optional[str] = None) -> VyraLogger:
 # Utility functions for common logging patterns
 # ---------------------------------------------------------------------------
 
+
 def log_function_call(logger: VyraLogger, **kwargs: Any) -> None:
     """
     Log a function call with structured context.
@@ -309,17 +306,20 @@ def log_exception(
 
 
 @overload
-def log_call(func: AsyncF) -> AsyncF: ...
+def log_call(func: AsyncF) -> AsyncF:
+    ...
 
 
 @overload
-def log_call(func: F) -> F: ...
+def log_call(func: F) -> F:
+    ...
 
 
 @overload
 def log_call(
     func: None = None, *, logger: Optional[VyraLogger] = None
-) -> Callable[[Union[F, AsyncF]], Union[F, AsyncF]]: ...
+) -> Callable[[Union[F, AsyncF]], Union[F, AsyncF]]:
+    ...
 
 
 def log_call(
@@ -355,7 +355,9 @@ def log_call(
         func_logger = logger or get_logger(f.__module__)
         is_async = asyncio.iscoroutinefunction(f)
 
-        def _build_call_context(sig: inspect.Signature, args: tuple, kwargs: dict) -> Dict[str, Any]:
+        def _build_call_context(
+            sig: inspect.Signature, args: tuple, kwargs: dict
+        ) -> Dict[str, Any]:
             bound_args = sig.bind_partial(*args, **kwargs)
             bound_args.apply_defaults()
             call_context: Dict[str, Any] = {}
@@ -369,11 +371,14 @@ def log_call(
             return call_context
 
         if is_async:
+
             @functools.wraps(f)
             async def async_wrapper(*args: Any, **kwargs: Any) -> Any:
                 sig = inspect.signature(f)
                 call_context = _build_call_context(sig, args, kwargs)
-                func_logger.debug("function_called", function=f.__name__, module=f.__module__, **call_context)
+                func_logger.debug(
+                    "function_called", function=f.__name__, module=f.__module__, **call_context
+                )
                 start_time = time.time()
                 try:
                     result = await f(*args, **kwargs)
@@ -402,11 +407,14 @@ def log_call(
 
             return cast(Union[F, AsyncF], async_wrapper)  # type: ignore[return-value]
         else:
+
             @functools.wraps(f)
             def sync_wrapper(*args: Any, **kwargs: Any) -> Any:
                 sig = inspect.signature(f)
                 call_context = _build_call_context(sig, args, kwargs)
-                func_logger.debug("function_called", function=f.__name__, module=f.__module__, **call_context)
+                func_logger.debug(
+                    "function_called", function=f.__name__, module=f.__module__, **call_context
+                )
                 start_time = time.time()
                 try:
                     result = f(*args, **kwargs)

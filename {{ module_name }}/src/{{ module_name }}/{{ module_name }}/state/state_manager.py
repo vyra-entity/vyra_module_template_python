@@ -79,6 +79,7 @@ logger = get_logger(__name__)
 @dataclass
 class LifecycleCallbackEntry:
     """A registered suspend- or resume-phase callback with priority ordering."""
+
     priority: int
     name: str
     callback: Callable[[], Awaitable[None]]
@@ -153,7 +154,9 @@ class StateManager:
 
         logger.info(f"StateManager initialised for module: {self.module_name}")
 
-    def _on_state_change_template(self, layer: str, old_state: str, new_state: str, *_: Any) -> None:
+    def _on_state_change_template(
+        self, layer: str, old_state: str, new_state: str, *_: Any
+    ) -> None:
         """Template callback for global state transitions (intentionally no-op)."""
         return None
 
@@ -212,7 +215,9 @@ class StateManager:
             name:     Human-readable label for diagnostics.
         """
         self._suspend_callbacks.append(
-            LifecycleCallbackEntry(priority=priority, name=name or callback.__name__, callback=callback)
+            LifecycleCallbackEntry(
+                priority=priority, name=name or callback.__name__, callback=callback
+            )
         )
         self._suspend_callbacks.sort(key=lambda e: e.priority)
         logger.debug(f"📌 Registered suspend callback '{name}' (prio={priority})")
@@ -228,7 +233,9 @@ class StateManager:
         See :meth:`register_suspend_callback` for execution semantics.
         """
         self._resume_callbacks.append(
-            LifecycleCallbackEntry(priority=priority, name=name or callback.__name__, callback=callback)
+            LifecycleCallbackEntry(
+                priority=priority, name=name or callback.__name__, callback=callback
+            )
         )
         self._resume_callbacks.sort(key=lambda e: e.priority)
         logger.debug(f"📌 Registered resume callback '{name}' (prio={priority})")
@@ -259,10 +266,8 @@ class StateManager:
 
         # Group entries by priority
         from itertools import groupby
-        groups = [
-            (prio, list(grp))
-            for prio, grp in groupby(entries, key=lambda e: e.priority)
-        ]
+
+        groups = [(prio, list(grp)) for prio, grp in groupby(entries, key=lambda e: e.priority)]
 
         total = len(entries)
         done = 0
@@ -278,16 +283,21 @@ class StateManager:
                 await asyncio.gather(*[_run_one(e) for e in group])
                 done += len(group)
                 progress = int(done / total * 90)  # reserve last 10% for state transition
-                goal_handle.publish_feedback({
-                    "status": f"{phase}_callbacks_prio_{prio}_done",
-                    "progress": progress,
-                })
+                goal_handle.publish_feedback(
+                    {
+                        "status": f"{phase}_callbacks_prio_{prio}_done",
+                        "progress": progress,
+                    }
+                )
             except asyncio.TimeoutError:
                 logger.error(f"❌ [{phase}] Timeout in priority-{prio} callbacks ({names})")
                 try:
                     self.execute_state_action(
-                        StateRequest(layer="lifecycle", action="enter_recovery",
-                                     metadata={"reason": f"{phase}_callback_timeout", "group": names})
+                        StateRequest(
+                            layer="lifecycle",
+                            action="enter_recovery",
+                            metadata={"reason": f"{phase}_callback_timeout", "group": names},
+                        )
                     )
                 except Exception as exc2:
                     logger.error(f"enter_recovery failed: {exc2}")
@@ -296,8 +306,11 @@ class StateManager:
                 logger.error(f"❌ [{phase}] Error in priority-{prio} callbacks ({names}): {exc}")
                 try:
                     self.execute_state_action(
-                        StateRequest(layer="lifecycle", action="enter_recovery",
-                                     metadata={"reason": f"{phase}_callback_error", "error": str(exc)})
+                        StateRequest(
+                            layer="lifecycle",
+                            action="enter_recovery",
+                            metadata={"reason": f"{phase}_callback_error", "error": str(exc)},
+                        )
                     )
                 except Exception as exc2:
                     logger.error(f"enter_recovery failed: {exc2}")
@@ -312,6 +325,7 @@ class StateManager:
             return
 
         from ..interface import register_endpoint_callbacks  # lazy – needs ROS2 env
+
         register_endpoint_callbacks(self.entity, callback_parent=self)
         self._endpoints_registered = True
         logger.info("✅ StateManager Zenoh interfaces registered")
@@ -355,9 +369,11 @@ class StateManager:
             logger.error(f"❌ Failed to initialise module: {exc}")
             error_details: list[Any] = []
             ErrorTraceback.check_error_exist(error_details=error_details)
-            self._record_error(str(exc), {'error_details': error_details})
+            self._record_error(str(exc), {"error_details": error_details})
             try:
-                self._state_machine.report_fault(fault_info={'error': str(exc), 'details': error_details})
+                self._state_machine.report_fault(
+                    fault_info={"error": str(exc), "details": error_details}
+                )
             except Exception:
                 pass
             return False
@@ -369,9 +385,7 @@ class StateManager:
             lifecycle = self._state_machine.get_lifecycle_state()
 
             if lifecycle == LifecycleState.INITIALIZING:
-                self._state_machine.complete_initialization(
-                    result={"container_ready": True}
-                )
+                self._state_machine.complete_initialization(result={"container_ready": True})
             else:
                 logger.info(
                     "  ✓ Lifecycle already %s — skipping complete_initialization()",
@@ -381,15 +395,17 @@ class StateManager:
             current = self.get_current_state()
             self._record_history_diff(prev, current)
             return True
-        
+
         except Exception as exc:
             logger.error(f"❌ Failed to initialise module: {exc}")
             error_details: list[Any] = []
             ErrorTraceback.check_error_exist(error_details=error_details)
-            self._record_error(str(exc), {'error_details': error_details})
-        
+            self._record_error(str(exc), {"error_details": error_details})
+
             try:
-                self._state_machine.report_fault(fault_info={'error': str(exc), 'details': error_details})
+                self._state_machine.report_fault(
+                    fault_info={"error": str(exc), "details": error_details}
+                )
             except Exception:
                 pass
             return False
@@ -416,19 +432,13 @@ class StateManager:
                 sm_cfg = data.get("state_manager", {})
                 if sm_cfg:
                     config.update(sm_cfg)
-                    logger.debug(
-                        f"Loaded StateManager config from {params_path}: {sm_cfg}"
-                    )
+                    logger.debug(f"Loaded StateManager config from {params_path}: {sm_cfg}")
                 else:
                     logger.debug(
-                        "No 'state_manager' section in module_params.yaml, "
-                        "using defaults."
+                        "No 'state_manager' section in module_params.yaml, " "using defaults."
                     )
             else:
-                logger.debug(
-                    f"module_params.yaml not found at {params_path}, "
-                    "using defaults."
-                )
+                logger.debug(f"module_params.yaml not found at {params_path}, " "using defaults.")
         except Exception as exc:
             logger.warning(f"⚠️ Could not load module_params.yaml: {exc}")
 
@@ -530,13 +540,17 @@ class StateManager:
             )
             if not success:
                 goal_handle.abort()
-                return {"success": False, "message": "Suspend aborted – callback failure",
-                        "final_state": self._state_machine.get_all_states()["lifecycle"]}
+                return {
+                    "success": False,
+                    "message": "Suspend aborted – callback failure",
+                    "final_state": self._state_machine.get_all_states()["lifecycle"],
+                }
 
             # Execute the state transition
             self.execute_state_action(
-                StateRequest(layer="lifecycle", action="suspend",
-                             metadata={"reason": "remote_request"})
+                StateRequest(
+                    layer="lifecycle", action="suspend", metadata={"reason": "remote_request"}
+                )
             )
 
             goal_handle.publish_feedback({"status": "suspended", "progress": 100})
@@ -550,19 +564,28 @@ class StateManager:
             logger.error("❌ Suspend action timed out (20 s)")
             try:
                 self.execute_state_action(
-                    StateRequest(layer="lifecycle", action="enter_recovery",
-                                 metadata={"reason": "suspend_timeout"})
+                    StateRequest(
+                        layer="lifecycle",
+                        action="enter_recovery",
+                        metadata={"reason": "suspend_timeout"},
+                    )
                 )
             except Exception:
                 pass
             goal_handle.abort()
-            return {"success": False, "message": "Suspend timed out",
-                    "final_state": self._state_machine.get_all_states()["lifecycle"]}
+            return {
+                "success": False,
+                "message": "Suspend timed out",
+                "final_state": self._state_machine.get_all_states()["lifecycle"],
+            }
         except Exception as exc:
             logger.error(f"❌ Suspend action error: {exc}")
             goal_handle.abort()
-            return {"success": False, "message": str(exc),
-                    "final_state": self._state_machine.get_all_states()["lifecycle"]}
+            return {
+                "success": False,
+                "message": str(exc),
+                "final_state": self._state_machine.get_all_states()["lifecycle"],
+            }
 
     @remote_actionServer.on_goal(name="request_lc_resume")
     async def _on_goal_resume(self, goal_request: Any) -> bool:
@@ -604,13 +627,19 @@ class StateManager:
             )
             if not success:
                 goal_handle.abort()
-                return {"success": False, "message": "Resume aborted – callback failure",
-                        "final_state": self._state_machine.get_all_states()["lifecycle"]}
+                return {
+                    "success": False,
+                    "message": "Resume aborted – callback failure",
+                    "final_state": self._state_machine.get_all_states()["lifecycle"],
+                }
 
             # Transition: SUSPENDED → ACTIVE (via resume_from_suspend)
             self.execute_state_action(
-                StateRequest(layer="lifecycle", action="resume_from_suspend",
-                             metadata={"reason": "remote_request"})
+                StateRequest(
+                    layer="lifecycle",
+                    action="resume_from_suspend",
+                    metadata={"reason": "remote_request"},
+                )
             )
 
             goal_handle.publish_feedback({"status": "resumed", "progress": 100})
@@ -624,19 +653,28 @@ class StateManager:
             logger.error("❌ Resume action timed out (20 s)")
             try:
                 self.execute_state_action(
-                    StateRequest(layer="lifecycle", action="enter_recovery",
-                                 metadata={"reason": "resume_timeout"})
+                    StateRequest(
+                        layer="lifecycle",
+                        action="enter_recovery",
+                        metadata={"reason": "resume_timeout"},
+                    )
                 )
             except Exception:
                 pass
             goal_handle.abort()
-            return {"success": False, "message": "Resume timed out",
-                    "final_state": self._state_machine.get_all_states()["lifecycle"]}
+            return {
+                "success": False,
+                "message": "Resume timed out",
+                "final_state": self._state_machine.get_all_states()["lifecycle"],
+            }
         except Exception as exc:
             logger.error(f"❌ Resume action error: {exc}")
             goal_handle.abort()
-            return {"success": False, "message": str(exc),
-                    "final_state": self._state_machine.get_all_states()["lifecycle"]}
+            return {
+                "success": False,
+                "message": str(exc),
+                "final_state": self._state_machine.get_all_states()["lifecycle"],
+            }
 
     # ─────────────────────────────────────────────────────────────────────────
     # Read-only Zenoh interface methods (decorated with @remote_service)
@@ -1007,10 +1045,7 @@ class StateManager:
         except Exception as exc:
             logger.warning(f"Failed to broadcast offline state: {exc}")
 
-
-    def _dispatch_action(
-        self, layer: str, action: str, metadata: Dict[str, Any]
-    ) -> None:
+    def _dispatch_action(self, layer: str, action: str, metadata: Dict[str, Any]) -> None:
         """Translate layer/action pairs to UnifiedStateMachine calls."""
         if layer == "lifecycle":
             if action == "start":
@@ -1069,9 +1104,7 @@ class StateManager:
     # History & diagnostics helpers
     # ─────────────────────────────────────────────────────────────────────────
 
-    def _record_history_diff(
-        self, before: ThreeLayerState, after: ThreeLayerState
-    ) -> None:
+    def _record_history_diff(self, before: ThreeLayerState, after: ThreeLayerState) -> None:
         """Record any state changes between two snapshots."""
         now = datetime.now()
 
@@ -1105,18 +1138,14 @@ class StateManager:
                 )
             )
 
-    def _record_error(
-        self, message: str, details: Optional[Dict[str, Any]] = None
-    ) -> None:
+    def _record_error(self, message: str, details: Optional[Dict[str, Any]] = None) -> None:
         """Store an error entry in the error history buffer."""
         entry: Dict[str, Any] = {
             "error_message": message,
             "error_details": details or {},
             "timestamp": datetime.now().isoformat(),
             "state_at_error": (
-                self.get_current_state().to_dict()
-                if self._state_machine is not None
-                else None
+                self.get_current_state().to_dict() if self._state_machine is not None else None
             ),
         }
         self._last_error_state = entry

@@ -148,7 +148,9 @@ class PluginBridge(BaseEventBridge):
                 dropped += 1
 
         if dropped:
-            logger.debug("PluginBridge.publish: dropped %d for slow subscribers on %r", dropped, topic)
+            logger.debug(
+                "PluginBridge.publish: dropped %d for slow subscribers on %r", dropped, topic
+            )
 
     def publish_sync(self, topic: str, payload: Any) -> None:
         """
@@ -189,7 +191,9 @@ class PluginBridge(BaseEventBridge):
             except Exception as exc:
                 logger.warning(
                     "PluginBridge.receive: handler %s raised on channel=%r: %s",
-                    fn.__name__, channel, exc,
+                    fn.__name__,
+                    channel,
+                    exc,
                 )
 
     def receive_sync(self, channel: str, payload: Any) -> None:
@@ -240,7 +244,8 @@ class PluginBridge(BaseEventBridge):
         self._out_subs.setdefault(topic, []).append(q)
         logger.debug(
             "PluginBridge: subscriber added for channel=%r (total=%d)",
-            topic, len(self._out_subs[topic]),
+            topic,
+            len(self._out_subs[topic]),
         )
         return q
 
@@ -251,7 +256,8 @@ class PluginBridge(BaseEventBridge):
             subs.remove(q)
             logger.debug(
                 "PluginBridge: subscriber removed from channel=%r (remaining=%d)",
-                topic, len(subs),
+                topic,
+                len(subs),
             )
         except ValueError:
             pass

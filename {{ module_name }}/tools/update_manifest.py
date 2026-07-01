@@ -35,11 +35,13 @@ from pathlib import Path
 # TOML loading  (tomllib ≥3.11 → tomli → minimal regex fallback)
 # ---------------------------------------------------------------------------
 
+
 def _load_toml(path: Path) -> dict:
     """Load a TOML file with a best-effort strategy."""
     # Python 3.11+ stdlib
     try:
         import tomllib  # type: ignore[import]
+
         with open(path, "rb") as f:
             return tomllib.load(f)
     except (ImportError, ModuleNotFoundError):
@@ -48,6 +50,7 @@ def _load_toml(path: Path) -> dict:
     # pip install tomli  (common on older Pythons)
     try:
         import tomli as tomllib  # type: ignore[import, no-redef]
+
         with open(path, "rb") as f:
             return tomllib.load(f)
     except (ImportError, ModuleNotFoundError):
@@ -90,15 +93,16 @@ def _load_toml(path: Path) -> dict:
                 continue
 
             # key = value
-            m = re.match(r'^(\w+)\s*=\s*(.+)$', line)
+            m = re.match(r"^(\w+)\s*=\s*(.+)$", line)
             if not m:
                 continue
 
             key, raw_val = m.group(1), m.group(2).strip()
 
             # String
-            if (raw_val.startswith('"') and raw_val.endswith('"')) or \
-               (raw_val.startswith("'") and raw_val.endswith("'")):
+            if (raw_val.startswith('"') and raw_val.endswith('"')) or (
+                raw_val.startswith("'") and raw_val.endswith("'")
+            ):
                 val: object = raw_val[1:-1]
             # Inline array of strings  ["a", "b"]
             elif raw_val.startswith("[") and raw_val.endswith("]"):
@@ -119,14 +123,17 @@ def _load_toml(path: Path) -> dict:
 # YAML loading / writing  (PyYAML, always available in VYRA modules)
 # ---------------------------------------------------------------------------
 
+
 def _load_yaml(path: Path) -> dict:
     import yaml
+
     with open(path, encoding="utf-8") as f:
         return yaml.safe_load(f) or {}
 
 
 def _write_yaml(path: Path, data: dict) -> None:
     import yaml
+
     with open(path, "w", encoding="utf-8") as f:
         yaml.dump(data, f, default_flow_style=False, sort_keys=False, allow_unicode=True)
 
@@ -134,6 +141,7 @@ def _write_yaml(path: Path, data: dict) -> None:
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
+
 
 def run(pyproject_path: Path, module_data_path: Path) -> int:
     print("=== update_manifest.py ===")
@@ -150,30 +158,30 @@ def run(pyproject_path: Path, module_data_path: Path) -> int:
 
     toml = _load_toml(pyproject_path)
     poetry = toml.get("tool", {}).get("poetry", {})
-    vyra   = toml.get("tool", {}).get("vyra",   {})
+    vyra = toml.get("tool", {}).get("vyra", {})
 
-    name        = str(poetry.get("name", ""))
-    version     = str(poetry.get("version", "0.0.0"))
+    name = str(poetry.get("name", ""))
+    version = str(poetry.get("version", "0.0.0"))
     description = str(poetry.get("description", ""))
-    authors     = poetry.get("authors", [])
-    author      = authors[0] if isinstance(authors, list) and authors else str(authors or "")
-    template    = str(vyra.get("module_template", ""))
+    authors = poetry.get("authors", [])
+    author = authors[0] if isinstance(authors, list) and authors else str(authors or "")
+    template = str(vyra.get("module_template", ""))
 
     # Preserve uuid, alias and blueprints (never overwritten by this script)
     existing = _load_yaml(module_data_path)
-    uuid       = existing.get("uuid", "")
-    alias      = existing.get("alias", "")
+    uuid = existing.get("uuid", "")
+    alias = existing.get("alias", "")
     blueprints = existing.get("blueprints", "")
 
     new_data = {
-        "name":        name,
+        "name": name,
         "description": description,
-        "version":     version,
-        "template":    template,
-        "author":      author,
-        "uuid":        uuid,
-        "alias":       alias,
-        "blueprints":  blueprints,
+        "version": version,
+        "template": template,
+        "author": author,
+        "uuid": uuid,
+        "alias": alias,
+        "blueprints": blueprints,
     }
 
     _write_yaml(module_data_path, new_data)
@@ -187,10 +195,12 @@ def run(pyproject_path: Path, module_data_path: Path) -> int:
 
 
 if __name__ == "__main__":
-    _script_dir  = Path(__file__).resolve().parent
-    _workspace   = _script_dir.parent
+    _script_dir = Path(__file__).resolve().parent
+    _workspace = _script_dir.parent
 
-    _pyproject   = Path(sys.argv[1]) if len(sys.argv) > 1 else _workspace / "pyproject.toml"
-    _module_data = Path(sys.argv[2]) if len(sys.argv) > 2 else _workspace / ".module" / "module_data.yaml"
+    _pyproject = Path(sys.argv[1]) if len(sys.argv) > 1 else _workspace / "pyproject.toml"
+    _module_data = (
+        Path(sys.argv[2]) if len(sys.argv) > 2 else _workspace / ".module" / "module_data.yaml"
+    )
 
     sys.exit(run(_pyproject, _module_data))

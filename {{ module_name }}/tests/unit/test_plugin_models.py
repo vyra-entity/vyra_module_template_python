@@ -54,7 +54,12 @@ for _name in (
 # Load models.py directly (no relative imports, only stdlib + pydantic + stubs)
 _models = _load_module_from_file(
     "plugin_models",
-    _SRC_ROOT / "{{ module_name }}" / "{{ module_name }}" / "backend_webserver" / "plugin" / "models.py",
+    _SRC_ROOT
+    / "{{ module_name }}"
+    / "{{ module_name }}"
+    / "backend_webserver"
+    / "plugin"
+    / "models.py",
 )
 
 UiManifestEntry = _models.UiManifestEntry
@@ -64,6 +69,7 @@ UiManifestResponse = _models.UiManifestResponse
 # ============================================================================
 # UiManifestEntry Tests
 # ============================================================================
+
 
 class TestUiManifestEntry:
     """Verify UiManifestEntry Pydantic model."""
@@ -107,6 +113,7 @@ class TestUiManifestEntry:
 # UiManifestResponse Tests
 # ============================================================================
 
+
 class TestUiManifestResponse:
     """Verify UiManifestResponse uses ``ui_slots`` (not ``slots``)."""
 
@@ -119,9 +126,9 @@ class TestUiManifestResponse:
 
     def test_no_legacy_slots_field(self):
         """The response model must NOT have a bare ``slots`` field."""
-        assert "slots" not in UiManifestResponse.model_fields, (
-            "UiManifestResponse must NOT contain legacy 'slots' field"
-        )
+        assert (
+            "slots" not in UiManifestResponse.model_fields
+        ), "UiManifestResponse must NOT contain legacy 'slots' field"
 
     def test_empty_creation(self):
         """UiManifestResponse can be created with defaults (empty ui_slots)."""
@@ -193,6 +200,7 @@ class TestUiManifestResponse:
 # PluginGateway._empty_manifest Tests
 # ============================================================================
 
+
 class TestPluginGatewayEmptyManifest:
     """Verify _empty_manifest uses ``ui_slots`` key."""
 
@@ -209,7 +217,9 @@ class TestPluginGatewayEmptyManifest:
         ):
             sys.modules.setdefault(name, MagicMock())
 
-        filepath = _SRC_ROOT / "{{ module_name }}" / "{{ module_name }}" / "plugin" / "plugin_gateway.py"
+        filepath = (
+            _SRC_ROOT / "{{ module_name }}" / "{{ module_name }}" / "plugin" / "plugin_gateway.py"
+        )
         spec = importlib.util.spec_from_file_location(
             "{{ module_name }}.plugin.plugin_gateway",
             str(filepath),
@@ -224,12 +234,10 @@ class TestPluginGatewayEmptyManifest:
     def test_empty_manifest_has_ui_slots_key(self):
         """_empty_manifest must return dict with ``ui_slots``, not ``slots``."""
         manifest = self.PluginGateway._empty_manifest("MODULE", "{{ module_name }}")
-        assert "ui_slots" in manifest, (
-            f"_empty_manifest must contain 'ui_slots' key — got keys: {list(manifest.keys())}"
-        )
-        assert "slots" not in manifest, (
-            "_empty_manifest must NOT contain legacy 'slots' key"
-        )
+        assert (
+            "ui_slots" in manifest
+        ), f"_empty_manifest must contain 'ui_slots' key — got keys: {list(manifest.keys())}"
+        assert "slots" not in manifest, "_empty_manifest must NOT contain legacy 'slots' key"
         assert manifest["ui_slots"] == {}
 
     def test_empty_manifest_scope_fields(self):

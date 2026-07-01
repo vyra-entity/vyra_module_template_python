@@ -63,6 +63,7 @@ try:
         FuncType,
         ValType,
     )
+
     _WASMTIME_AVAILABLE = True
 except ImportError:
     _WASMTIME_AVAILABLE = False
@@ -74,6 +75,7 @@ _INTERFACES_YAML = Path(__file__).parent.parent.parent.parent / ".module" / "plu
 # ---------------------------------------------------------------------------
 # PluginEventSystem
 # ---------------------------------------------------------------------------
+
 
 class PluginEventSystem:
     """
@@ -106,6 +108,7 @@ class PluginEventSystem:
         # Bridge to PluginBridge (best-effort) — imports lazily to avoid circular import
         try:
             from ..backend_webserver.services.plugin_bridge import PluginBridge
+
             PluginBridge.get_instance().publish_sync(topic, {"topic": topic, "payload": payload})
         except Exception as exc:
             logger.debug("PluginEventSystem: PluginBridge bridge error: %s", exc)
@@ -146,6 +149,7 @@ class PluginEventSystem:
 # ---------------------------------------------------------------------------
 # LinkerFactory
 # ---------------------------------------------------------------------------
+
 
 def _python_type_to_val_types(annotation: Any) -> list:
     """Infer a list of wasmtime ValType from a Python type annotation."""
@@ -248,7 +252,8 @@ class LinkerFactory:
         if host_fn is None:
             logger.warning(
                 "LinkerFactory: PluginGateway has no method '%s' for wasm_name='%s' — skipping",
-                host_func_name, wasm_name,
+                host_func_name,
+                wasm_name,
             )
             return
 
@@ -256,7 +261,9 @@ class LinkerFactory:
         wasm_types_override = entry.get("wasm_types")
         if wasm_types_override:
             param_types = [_yaml_type_to_val_type(t) for t in wasm_types_override.get("params", [])]
-            result_types = [_yaml_type_to_val_type(t) for t in wasm_types_override.get("results", [])]
+            result_types = [
+                _yaml_type_to_val_type(t) for t in wasm_types_override.get("results", [])
+            ]
         else:
             param_types, result_types = self._infer_types(host_fn)
 
@@ -265,13 +272,16 @@ class LinkerFactory:
         # Build a synchronous wrapper (wasmtime callbacks must be sync)
         def _make_sync_wrapper(fn):
             if asyncio.iscoroutinefunction(fn):
+
                 def _sync_wrapper(*args):
                     loop = asyncio.get_event_loop()
                     result = loop.run_until_complete(fn(*args))
                     return result
             else:
+
                 def _sync_wrapper(*args):
                     return fn(*args)
+
             return _sync_wrapper
 
         sync_fn = _make_sync_wrapper(host_fn)
@@ -280,12 +290,16 @@ class LinkerFactory:
             linker.define_func(namespace, wasm_name, func_type, sync_fn)
             logger.debug(
                 "LinkerFactory: registered %s::%s → gateway.%s",
-                namespace, wasm_name, host_func_name,
+                namespace,
+                wasm_name,
+                host_func_name,
             )
         except Exception as exc:
             logger.error(
                 "LinkerFactory: failed to register %s::%s: %s",
-                namespace, wasm_name, exc,
+                namespace,
+                wasm_name,
+                exc,
             )
 
     @staticmethod
@@ -313,6 +327,7 @@ class LinkerFactory:
 # ---------------------------------------------------------------------------
 # PluginGateway
 # ---------------------------------------------------------------------------
+
 
 class PluginGateway:
     """
@@ -358,6 +373,7 @@ class PluginGateway:
         Creates LinkerFactory and GatewayWasmRuntimePool.
         """
         from .gateway_wasm_runtime import GatewayWasmRuntimePool
+
         self.entity = container_injection.get_entity()
         module_entry = getattr(self.entity, "module_entry", None)
         self._own_module_name = getattr(module_entry, "name", "")
@@ -394,7 +410,11 @@ class PluginGateway:
             target_module_name = full_instance_name
             target_module_id = full_instance_name
 
-        logger.debug("PluginGateway: setting up resolve client for target module '%s' (id='%s')", target_module_name, target_module_id)
+        logger.debug(
+            "PluginGateway: setting up resolve client for target module '%s' (id='%s')",
+            target_module_name,
+            target_module_id,
+        )
 
         try:
             self._resolve_client = await TransportProviderFactory.create_client(
@@ -403,7 +423,10 @@ class PluginGateway:
                 module_id=target_module_id,
                 namespace="plugin",
             )
-            logger.info("✅ PluginGateway: resolve_plugins client ready (module=%s)", full_instance_name or self._own_module_name)
+            logger.info(
+                "✅ PluginGateway: resolve_plugins client ready (module=%s)",
+                full_instance_name or self._own_module_name,
+            )
         except Exception as exc:
             logger.warning("⚠️  PluginGateway: resolve_plugins client failed: %s", exc)
             self._resolve_client = None
@@ -415,7 +438,10 @@ class PluginGateway:
                 module_id=target_module_id,
                 namespace="plugin",
             )
-            logger.info("✅ PluginGateway: get_nfs_path client ready (module=%s)", full_instance_name or self._own_module_name)
+            logger.info(
+                "✅ PluginGateway: get_nfs_path client ready (module=%s)",
+                full_instance_name or self._own_module_name,
+            )
         except Exception as exc:
             logger.warning("⚠️  PluginGateway: get_nfs_path client failed: %s", exc)
             self._get_nfs_path_client = None
@@ -540,15 +566,17 @@ class PluginGateway:
             await self._setup_resolve_client()
 
         request: dict[str, Any] = {
-            "scope_type":   scope_type,
+            "scope_type": scope_type,
             "scope_target": scope_target or module_name or self._own_module_name,
-            "module_name":  module_name or self._own_module_name,
-            "module_id":    module_id or self._own_module_id,
-            "p_id":         p_id,
+            "module_name": module_name or self._own_module_name,
+            "module_id": module_id or self._own_module_id,
+            "p_id": p_id,
             "request_source": request_source,
         }
 
-        logger.debug(f"PluginGateway.resolve_plugins: calling resolve_client with request: {request}")
+        logger.debug(
+            f"PluginGateway.resolve_plugins: calling resolve_client with request: {request}"
+        )
 
         result: dict = {}
         if self._resolve_client is not None:
@@ -631,13 +659,22 @@ class PluginGateway:
         data: dict = request.get("data") or {}
 
         if not plugin_id or not function_name:
-            return {"plugin_id": plugin_id, "success": False, "data": {}, "error": "plugin_id and function_name are required"}
+            return {
+                "plugin_id": plugin_id,
+                "success": False,
+                "data": {},
+                "error": "plugin_id and function_name are required",
+            }
 
         try:
-            result = await self.call_plugin(plugin_id=plugin_id, function_name=function_name, data=data)
+            result = await self.call_plugin(
+                plugin_id=plugin_id, function_name=function_name, data=data
+            )
             return {"plugin_id": plugin_id, "success": True, "data": result}
         except Exception as exc:
-            logger.error("PluginGateway.ui_function_call error [%s.%s]: %s", plugin_id, function_name, exc)
+            logger.error(
+                "PluginGateway.ui_function_call error [%s.%s]: %s", plugin_id, function_name, exc
+            )
             return {"plugin_id": plugin_id, "success": False, "data": {}, "error": str(exc)}
 
     # ------------------------------------------------------------------
@@ -748,8 +785,12 @@ class PluginGateway:
         # Resolve cache from plugin/resolve_plugins (not plugin manifest.yaml).
         # ui_slots is optional and mainly used to derive nfs path hints.
         resolved_manifest = self.get_manifest()
-        logger.debug("PluginGateway.call_plugin: resolved manifest from cache: %s", resolved_manifest)
-        ui_slots_raw = resolved_manifest.get("ui_slots", {}) if isinstance(resolved_manifest, dict) else {}
+        logger.debug(
+            "PluginGateway.call_plugin: resolved manifest from cache: %s", resolved_manifest
+        )
+        ui_slots_raw = (
+            resolved_manifest.get("ui_slots", {}) if isinstance(resolved_manifest, dict) else {}
+        )
         ui_slots: dict[str, Any] = ui_slots_raw if isinstance(ui_slots_raw, dict) else {}
         plugin_metadata_raw = (
             resolved_manifest.get("plugin_metadata", [])
@@ -793,7 +834,9 @@ class PluginGateway:
         own_base = module_base_name(self._own_module_name)
         scope_target_base = module_base_name(scope_target_module)
 
-        logger.debug(f"OWN_BASE: {own_base}, TARGET: {scope_target_module} (base={scope_target_base}), HOSTING_MODULE: {hosting_module}, RESOLVED NFS PATH: {resolved_nfs_path}")
+        logger.debug(
+            f"OWN_BASE: {own_base}, TARGET: {scope_target_module} (base={scope_target_base}), HOSTING_MODULE: {hosting_module}, RESOLVED NFS PATH: {resolved_nfs_path}"
+        )
 
         remote_module_name: str | None = None
         if scope_target_module and scope_target_base != own_base:
@@ -802,7 +845,9 @@ class PluginGateway:
         # Fallback: if resolve cache is cold, read MODULE scope directly from
         # manifest.yaml before attempting local runtime startup.
         if not remote_module_name:
-            logger.debug("PluginGateway.call_plugin: no remote module target from resolve cache, checking manifest.yaml for MODULE scope")
+            logger.debug(
+                "PluginGateway.call_plugin: no remote module target from resolve cache, checking manifest.yaml for MODULE scope"
+            )
             if resolved_nfs_path is None:
                 resolved_nfs_path = await self._lookup_nfs_path(plugin_id)
             manifest_file = resolved_nfs_path / "manifest.yaml"

@@ -36,11 +36,7 @@ from .settings import settings_router
 # ==> INSERT HERE <==
 
 
-
-
-
 logger = get_logger(__name__)
-
 
 
 @asynccontextmanager
@@ -53,23 +49,21 @@ async def lifespan(app: FastAPI):
     asyncio.create_task(operation_monitor())
 
     # Add any additional startup tasks here (e.g. initialize database connections, load models, etc.)
-    
-    # => INSERT HERE <==
 
+    # => INSERT HERE <==
 
     # Connect Redis and initialise authentication service
     try:
         redis_client = await redis_service.get_client()
         auth_service = AuthenticationService(
-            redis_client=redis_client,
-            module_id="{{ module_name }}"
+            redis_client=redis_client, module_id="{{ module_name }}"
         )
         set_auth_service(auth_service)
         logger.info("✅ Authentication service initialized")
     except Exception as exc:
         logger.error(
             "❌ Auth/Redis initialization failed — backend starts in degraded mode (auth unavailable)",
-            error=str(exc)
+            error=str(exc),
         )
 
     yield
@@ -85,33 +79,19 @@ app = FastAPI(
     description=settings.API_DESCRIPTION,
     docs_url="/api/docs",  # Swagger UI
     redoc_url="/api/redoc",  # ReDoc
-    lifespan=lifespan
+    lifespan=lifespan,
 )
 
 # Include routers with proper prefixes and tags
-app.include_router(
-    websocket_router,
-    prefix="/ws",
-    tags=["WebSocket"]
-)
+app.include_router(websocket_router, prefix="/ws", tags=["WebSocket"])
 
 # Include authentication router
-app.include_router(
-    auth_router,
-    tags=["Authentication"]
-)
+app.include_router(auth_router, tags=["Authentication"])
 
 # Include plugin router
-app.include_router(
-    plugin_router,
-    prefix="/plugin",
-    tags=["Plugin System"]
-)
+app.include_router(plugin_router, prefix="/plugin", tags=["Plugin System"])
 
-app.include_router(
-    settings_router,
-    tags=["Settings"]
-)
+app.include_router(settings_router, tags=["Settings"])
 
 
 # ------------------------ API Endpoints -------------------------
@@ -120,19 +100,24 @@ app.include_router(
 # ==> INSERT HERE <==
 
 
-
-
-
-
 # ------------------------ Frontend & Static Files -------------------------
 
 # Mount static files if available
 if settings.frontend_assets_available:
     if (settings.FRONTEND_DIST_PATH / "static").exists():
-        app.mount("/static", StaticFiles(directory=str(settings.FRONTEND_DIST_PATH / "static")), name="static")
-    
+        app.mount(
+            "/static",
+            StaticFiles(directory=str(settings.FRONTEND_DIST_PATH / "static")),
+            name="static",
+        )
+
     if (settings.FRONTEND_DIST_PATH / "assets").exists():
-        app.mount("/assets", StaticFiles(directory=str(settings.FRONTEND_DIST_PATH / "assets")), name="assets")
+        app.mount(
+            "/assets",
+            StaticFiles(directory=str(settings.FRONTEND_DIST_PATH / "assets")),
+            name="assets",
+        )
+
 
 # API Root endpoints
 @app.get("/")
@@ -148,15 +133,16 @@ async def root():
             "plugin": "/plugin",
             "ws": "/ws",
             "docs": "/api/docs",
-            "redoc": "/api/redoc"
+            "redoc": "/api/redoc",
         },
         "environment": {
             "development_mode": settings.DEVELOPMENT_MODE,
             "debug": settings.DEBUG,
             "has_ssl": settings.has_ssl_certificates,
-            "frontend_available": settings.frontend_assets_available
-        }
+            "frontend_available": settings.frontend_assets_available,
+        },
     }
+
 
 @app.get("/status")
 async def api_status():
@@ -169,9 +155,10 @@ async def api_status():
             "development_mode": settings.DEVELOPMENT_MODE,
             "workspace_path": str(settings.WORKSPACE_ROOT),
             "modules_path": str(settings.MODULES_PATH),
-            "docker_stack": settings.DOCKER_STACK_NAME
-        }
+            "docker_stack": settings.DOCKER_STACK_NAME,
+        },
     }
+
 
 @app.get("/health")
 async def health_check():
@@ -182,18 +169,18 @@ async def health_check():
             "modules_directory": settings.MODULES_PATH.exists(),
             "storage_directory": settings.STORAGE_PATH.exists(),
             "certificates": settings.has_ssl_certificates,
-            "frontend": settings.frontend_assets_available
+            "frontend": settings.frontend_assets_available,
         }
-        
+
         # Determine overall health
         healthy = all(checks.values())
-        
+
         return {
             "status": "healthy" if healthy else "degraded",
             "service": "{{ module_name }}",
             "version": settings.API_VERSION,
             "checks": checks,
-            "timestamp": "2025-10-28T13:30:00Z"  # Would use actual timestamp
+            "timestamp": "2025-10-28T13:30:00Z",  # Would use actual timestamp
         }
     except Exception as e:
         return {
@@ -201,8 +188,9 @@ async def health_check():
             "service": "{{ module_name }}",
             "version": settings.API_VERSION,
             "error": str(e),
-            "timestamp": "2025-10-28T13:30:00Z"
+            "timestamp": "2025-10-28T13:30:00Z",
         }
+
 
 # Frontend fallback routes
 @app.get("/dashboard")
@@ -213,5 +201,5 @@ async def dashboard_fallback(path: str = ""):
         "message": "Frontend wird durch Nginx oder Vue Dev Server bereitgestellt",
         "development_mode": settings.DEVELOPMENT_MODE,
         "frontend_path": str(settings.FRONTEND_PATH),
-        "redirect": f"/{{ module_name }}/{path}" if path else "/{{ module_name }}/"
+        "redirect": f"/{{ module_name }}/{path}" if path else "/{{ module_name }}/",
     }

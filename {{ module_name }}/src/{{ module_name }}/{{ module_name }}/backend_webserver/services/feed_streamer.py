@@ -63,6 +63,7 @@ logger = logging.getLogger(__name__)
 # Data model
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class FeedMessage:
     """Canonical feed message passed through the in-process bus.
@@ -75,9 +76,9 @@ class FeedMessage:
 
     module_name: str
     module_id: str
-    feed_type: str          # "news" | "state" | "error" | "system" | "custom"
+    feed_type: str  # "news" | "state" | "error" | "system" | "custom"
     message: str
-    timestamp: str          # ISO-8601
+    timestamp: str  # ISO-8601
     data: dict = field(default_factory=dict)
 
     def to_dict(self) -> dict:
@@ -88,6 +89,7 @@ class FeedMessage:
 # ---------------------------------------------------------------------------
 # FeedStreamer
 # ---------------------------------------------------------------------------
+
 
 class FeedStreamer(BaseEventBridge):
     """
@@ -137,7 +139,9 @@ class FeedStreamer(BaseEventBridge):
         """Return the process-wide FeedStreamer singleton."""
         if cls._instance is None:
             cls._instance = cls(history_size=history_size, queue_size=queue_size)
-            logger.info("✅ FeedStreamer singleton created (history=%d, queue=%d)", history_size, queue_size)
+            logger.info(
+                "✅ FeedStreamer singleton created (history=%d, queue=%d)", history_size, queue_size
+            )
         return cls._instance
 
     @classmethod

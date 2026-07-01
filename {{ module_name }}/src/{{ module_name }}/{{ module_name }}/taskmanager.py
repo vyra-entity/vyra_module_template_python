@@ -1,4 +1,3 @@
-
 import asyncio
 from .logging_config import get_logger
 from collections import deque
@@ -47,13 +46,17 @@ class TaskManager:
         if coro.__name__ in self.tasks:
             await self.cancel_task(coro, force=True)
             del self.tasks[coro.__name__]
-            self.history.append({
-                "task_name": coro.__name__,
-                "removed_at": asyncio.get_event_loop().time(),
-            })
+            self.history.append(
+                {
+                    "task_name": coro.__name__,
+                    "removed_at": asyncio.get_event_loop().time(),
+                }
+            )
             logger.info(f"Task <{coro.__name__}> has been removed.")
 
-    async def restart_task(self, coro: Callable, force_restart: bool = False, force_time: float = 5) -> None:
+    async def restart_task(
+        self, coro: Callable, force_restart: bool = False, force_time: float = 5
+    ) -> None:
         if coro.__name__ not in self.tasks:
             logger.error(f"Task <{coro.__name__}> does not exist.")
             return
@@ -78,7 +81,11 @@ class TaskManager:
         _, task, _, _ = self.tasks[coro.__name__]
         task.cancel()
         start_time = asyncio.get_event_loop().time()
-        while not task.done() and force and (asyncio.get_event_loop().time() - start_time) < self.TIMEOUT_CANCEL_TASK:
+        while (
+            not task.done()
+            and force
+            and (asyncio.get_event_loop().time() - start_time) < self.TIMEOUT_CANCEL_TASK
+        ):
             await asyncio.sleep(0.1)
             task.cancel()
         self.add_history_entry("cancelled", coro.__name__)
@@ -136,25 +143,33 @@ class TaskManager:
                 "hang_timeout_s": hang_timeout_s,
             }
         else:
-            self.metadata[coro.__name__].update({
-                "last_start_time": now,
-                "last_heartbeat": now,
-                "watchdog_enabled": watchdog_enabled,
-                "hang_timeout_s": hang_timeout_s,
-            })
+            self.metadata[coro.__name__].update(
+                {
+                    "last_start_time": now,
+                    "last_heartbeat": now,
+                    "watchdog_enabled": watchdog_enabled,
+                    "hang_timeout_s": hang_timeout_s,
+                }
+            )
         self.add_history_entry("created", coro.__name__)
 
     def add_history_entry(self, action: str, task_name: str) -> None:
-        if self.history and action == self.history[-1]["action"] and task_name == self.history[-1]["task_name"]:
+        if (
+            self.history
+            and action == self.history[-1]["action"]
+            and task_name == self.history[-1]["task_name"]
+        ):
             self.history[-1]["timestamp"] = asyncio.get_event_loop().time()
             self.history[-1]["duplicate_count"] += 1
             return
-        self.history.append({
-            "task_name": task_name,
-            "action": action,
-            "timestamp": asyncio.get_event_loop().time(),
-            "duplicate_count": 1,
-        })
+        self.history.append(
+            {
+                "task_name": task_name,
+                "action": action,
+                "timestamp": asyncio.get_event_loop().time(),
+                "duplicate_count": 1,
+            }
+        )
 
     def get_status(self) -> dict[str, Any]:
         status = {}

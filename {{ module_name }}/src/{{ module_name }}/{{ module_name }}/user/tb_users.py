@@ -15,6 +15,7 @@ logger = get_logger(__name__)
 
 class UserRole(Enum):
     """User roles for access control"""
+
     ADMIN = "admin"
     MANAGER = "manager"
     OPERATOR = "operator"
@@ -24,6 +25,7 @@ class UserRole(Enum):
 
 class UserLevel(Enum):
     """User access levels"""
+
     LEVEL_0 = 0  # Limited read-only
     LEVEL_1 = 1  # Read-only
     LEVEL_2 = 2  # Module operations
@@ -34,9 +36,9 @@ class UserLevel(Enum):
 class User(Base):
     """
     Database model for User Management.
-    
+
     Stores user credentials, roles, permissions, and access levels.
-    
+
     Attributes:
         id (int): Primary key auto-increment
         username (str): Unique username
@@ -55,6 +57,7 @@ class User(Base):
         locked_until (datetime): Account lock timestamp if locked
         user_metadata (dict): Additional user metadata
     """
+
     __tablename__ = "user"
 
     # Primary identification
@@ -64,40 +67,32 @@ class User(Base):
     display_name: Mapped[str] = mapped_column(String(200), nullable=True, default="")
     lock_edit: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     email: Mapped[str] = mapped_column(String(255), nullable=True)
-    
+
     # Role and access control
     role: Mapped[UserRole] = mapped_column(
-        SQLEnum(UserRole),
-        nullable=False,
-        default=UserRole.VIEWER
+        SQLEnum(UserRole), nullable=False, default=UserRole.VIEWER
     )
     level: Mapped[UserLevel] = mapped_column(
-        SQLEnum(UserLevel),
-        nullable=False,
-        default=UserLevel.LEVEL_3
+        SQLEnum(UserLevel), nullable=False, default=UserLevel.LEVEL_3
     )
     enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
-    
+
     # Permissions
     permissions: Mapped[dict] = mapped_column(JSON, nullable=True, default=dict)
-    
+
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        server_default=func.now(),
-        nullable=False
+        DateTime(timezone=True), server_default=func.now(), nullable=False
     )
     last_login: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=True)
     last_password_change: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        server_default=func.now(),
-        nullable=False
+        DateTime(timezone=True), server_default=func.now(), nullable=False
     )
-    
+
     # Security
     login_attempts: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     locked_until: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=True)
-    
+
     # Additional user data
     user_metadata: Mapped[dict] = mapped_column(JSON, nullable=True, default=dict)
 

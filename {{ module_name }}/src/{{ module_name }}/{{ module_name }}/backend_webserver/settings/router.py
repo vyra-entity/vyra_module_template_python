@@ -28,7 +28,10 @@ def _is_admin(user: dict[str, Any]) -> bool:
 
 def _resolve_module_params_path() -> Path:
     """Locate ``.module/module_params.yaml`` in runtime/workspace locations."""
-    candidates = [Path("/workspace/.module/module_params.yaml"), Path.cwd() / ".module/module_params.yaml"]
+    candidates = [
+        Path("/workspace/.module/module_params.yaml"),
+        Path.cwd() / ".module/module_params.yaml",
+    ]
     for parent in Path(__file__).resolve().parents:
         candidates.append(parent / ".module/module_params.yaml")
 
@@ -65,7 +68,10 @@ def _write_module_params(path: Path, payload: dict[str, Any]) -> None:
 
 def _resolve_module_data_path() -> Path | None:
     """Locate ``.module/module_data.yaml`` in runtime/workspace locations."""
-    candidates = [Path("/workspace/.module/module_data.yaml"), Path.cwd() / ".module/module_data.yaml"]
+    candidates = [
+        Path("/workspace/.module/module_data.yaml"),
+        Path.cwd() / ".module/module_data.yaml",
+    ]
     for parent in Path(__file__).resolve().parents:
         candidates.append(parent / ".module/module_data.yaml")
 
@@ -89,7 +95,15 @@ def _load_about_info() -> dict[str, Any]:
         return info
 
     if isinstance(data, dict):
-        for key in ("name", "display_name", "version", "description", "author", "blueprints", "uuid"):
+        for key in (
+            "name",
+            "display_name",
+            "version",
+            "description",
+            "author",
+            "blueprints",
+            "uuid",
+        ):
             if key in data:
                 info[key] = data[key]
     return info

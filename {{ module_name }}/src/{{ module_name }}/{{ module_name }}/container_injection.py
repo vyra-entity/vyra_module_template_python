@@ -43,6 +43,7 @@ from .logging_config import get_logger, log_exception, log_function_call, log_fu
 
 if TYPE_CHECKING:
     from vyra_base.core import VyraEntity
+
     # Only needed for type annotations — kept here to avoid circular imports at runtime.
     # (application/__init__.py → application.py → container_injection.py → application/)
     from .application import Component
@@ -57,12 +58,14 @@ logger = get_logger(__name__)
 
 class ContainerNotInitializedError(Exception):
     """Raised when trying to access container before initialization"""
+
     pass
 
 
 # ---------------------------------------------------------------------------
 # ServiceRegistry — dynamische, modulspezifische Dienste
 # ---------------------------------------------------------------------------
+
 
 class ServiceRegistry:
     """
@@ -239,8 +242,10 @@ def provide_service(name: str):
         async def handler(pm = Depends(provide_service("plugin_manager"))):
             ...
     """
+
     def _provider():
         return _service_registry.require(name)
+
     _provider.__name__ = f"provide_{name}"
     return _provider
 
@@ -248,6 +253,7 @@ def provide_service(name: str):
 # ---------------------------------------------------------------------------
 # ApplicationContainer — fixe Kernobjekte
 # ---------------------------------------------------------------------------
+
 
 class ApplicationContainer(containers.DeclarativeContainer):
     """
@@ -264,10 +270,10 @@ class ApplicationContainer(containers.DeclarativeContainer):
     ServiceRegistry verwaltet — nicht hier. Dies hält den Container schlank und
     ermöglicht das dynamische Hinzufügen neuer Dienste ohne Code-Änderungen.
     """
-    
+
     # Configuration
     config = providers.Configuration()
-    
+
     # Core components as Singleton providers
     entity: providers.Singleton[VyraEntity | None] = providers.Singleton(lambda: None)
     component: providers.Singleton[Component | None] = providers.Singleton(lambda: None)
@@ -285,7 +291,7 @@ container = ApplicationContainer()
 def set_entity(entity_instance) -> None:
     """
     Set the VyraEntity instance in the global container.
-    
+
     Args:
         entity_instance: VyraEntity instance from core application
     """
@@ -296,10 +302,10 @@ def set_entity(entity_instance) -> None:
 def get_entity():
     """
     Get the VyraEntity instance from the global container.
-    
+
     Returns:
         VyraEntity instance
-        
+
     Raises:
         ContainerNotInitializedError: If entity has not been set yet
     """
@@ -315,7 +321,7 @@ def get_entity():
 def set_component(component_instance) -> None:
     """
     Set the Component instance in the global container.
-    
+
     Args:
         component_instance: Component instance from application
     """
@@ -326,10 +332,10 @@ def set_component(component_instance) -> None:
 def get_component() -> Component:
     """
     Get the Component instance from the global container.
-    
+
     Returns:
         Component instance
-        
+
     Raises:
         ContainerNotInitializedError: If component has not been set yet
     """
@@ -345,7 +351,7 @@ def get_component() -> Component:
 def set_task_manager(task_manager_instance) -> None:
     """
     Set the TaskManager instance in the global container.
-    
+
     Args:
         task_manager_instance: TaskManager instance
     """
@@ -356,18 +362,17 @@ def set_task_manager(task_manager_instance) -> None:
 def get_task_manager() -> TaskManager:
     """
     Get the TaskManager instance from the global container.
-    
+
     Returns:
         TaskManager instance
-        
+
     Raises:
         ContainerNotInitializedError: If task_manager has not been set yet
     """
     task_manager_instance = container.task_manager()
     if task_manager_instance is None:
         raise ContainerNotInitializedError(
-            "TaskManager not initialized in container. "
-            "Make sure runner() has been called."
+            "TaskManager not initialized in container. " "Make sure runner() has been called."
         )
     return task_manager_instance
 
@@ -375,7 +380,7 @@ def get_task_manager() -> TaskManager:
 def set_state_manager(state_manager_instance) -> None:
     """
     Set the StateManager instance in the global container.
-    
+
     Args:
         state_manager_instance: StateManager instance
     """
@@ -386,10 +391,10 @@ def set_state_manager(state_manager_instance) -> None:
 def get_state_manager() -> StateManager:
     """
     Get the StateManager instance from the global container.
-    
+
     Returns:
         StateManager instance
-        
+
     Raises:
         ContainerNotInitializedError: If state_manager has not been set yet
     """
@@ -405,21 +410,29 @@ def get_state_manager() -> StateManager:
 def is_initialized() -> bool:
     """
     Check if the container has been initialized with all required components.
-    
+
     Returns:
         True if entity, component, task_manager, state_manager, and user_manager are all set
     """
     try:
-        for component_name in ['entity', 'component', 'task_manager', 'state_manager', 'user_manager']:
+        for component_name in [
+            "entity",
+            "component",
+            "task_manager",
+            "state_manager",
+            "user_manager",
+        ]:
             if container.__getattribute__(component_name)() is None:
                 logger.debug(f"Container component not initialized: {component_name}")
-        return all([
-            container.entity() is not None,
-            container.component() is not None,
-            container.task_manager() is not None,
-            container.state_manager() is not None,
-            container.user_manager() is not None
-        ])
+        return all(
+            [
+                container.entity() is not None,
+                container.component() is not None,
+                container.task_manager() is not None,
+                container.state_manager() is not None,
+                container.user_manager() is not None,
+            ]
+        )
     except Exception:
         return False
 
@@ -445,10 +458,10 @@ def reset() -> None:
 def provide_entity():
     """
     Provider function for FastAPI Depends().
-    
+
     Usage:
         from fastapi import Depends
-        
+
         @router.get("/endpoint")
         async def endpoint(entity = Depends(provide_entity)):
             ...
@@ -459,10 +472,10 @@ def provide_entity():
 def provide_component():
     """
     Provider function for FastAPI Depends().
-    
+
     Usage:
         from fastapi import Depends
-        
+
         @router.get("/endpoint")
         async def endpoint(component = Depends(provide_component)):
             ...
@@ -473,10 +486,10 @@ def provide_component():
 def provide_task_manager():
     """
     Provider function for FastAPI Depends().
-    
+
     Usage:
         from fastapi import Depends
-        
+
         @router.get("/endpoint")
         async def endpoint(task_manager = Depends(provide_task_manager)):
             ...
@@ -487,10 +500,10 @@ def provide_task_manager():
 def provide_state_manager():
     """
     Provider function for FastAPI Depends().
-    
+
     Usage:
         from fastapi import Depends
-        
+
         @router.get("/endpoint")
         async def endpoint(state_manager = Depends(provide_state_manager)):
             ...
@@ -501,7 +514,7 @@ def provide_state_manager():
 def set_user_manager(user_manager_instance: UserManager) -> None:
     """
     Set the UserManager instance in the global container.
-    
+
     Args:
         user_manager_instance: UserManager instance
     """
@@ -512,10 +525,10 @@ def set_user_manager(user_manager_instance: UserManager) -> None:
 def get_user_manager() -> Optional[UserManager]:
     """
     Get the UserManager instance from the global container.
-    
+
     Returns:
         UserManager instance
-        
+
     Raises:
         ContainerNotInitializedError: If user_manager has not been set yet
     """
@@ -531,10 +544,10 @@ def get_user_manager() -> Optional[UserManager]:
 def provide_user_manager():
     """
     Provider function for FastAPI Depends().
-    
+
     Usage:
         from fastapi import Depends
-        
+
         @router.get("/endpoint")
         async def endpoint(user_manager = Depends(provide_user_manager)):
             ...
@@ -565,9 +578,7 @@ def set_plugin_gateway(plugin_gateway_instance) -> None:
 def get_plugin_gateway():
     instance = container.plugin_gateway()
     if instance is None:
-        raise ContainerNotInitializedError(
-            "PluginGateway not initialized in container."
-        )
+        raise ContainerNotInitializedError("PluginGateway not initialized in container.")
     return instance
 
 
@@ -584,9 +595,7 @@ def set_plugin_bridge(plugin_bridge_instance) -> None:
 def get_plugin_bridge():
     instance = container.plugin_bridge()
     if instance is None:
-        raise ContainerNotInitializedError(
-            "PluginBridge not initialized in container."
-        )
+        raise ContainerNotInitializedError("PluginBridge not initialized in container.")
     return instance
 
 

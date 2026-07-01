@@ -25,7 +25,9 @@ class UserManagerClient:
         self.entity = entity
         self.target_module_name = os.getenv("EXTERNAL_USERMANAGER_MODULE", "v2_usermanager")
         self.target_module_id = os.getenv("EXTERNAL_USERMANAGER_MODULE_ID", "")
-        self.request_token_function = os.getenv("USERMANAGER_TOKEN_FUNCTION", "request_access_token")
+        self.request_token_function = os.getenv(
+            "USERMANAGER_TOKEN_FUNCTION", "request_access_token"
+        )
         self.healthcheck_function = os.getenv("USERMANAGER_HEALTH_FUNCTION", "ping")
         self._connected = False
         # Auto-disable when no external module ID is configured
@@ -49,7 +51,9 @@ class UserManagerClient:
         self._connected = False
         logger.info("usermanager_client_stopped")
 
-    async def _call_external(self, function_name: str, payload: Optional[dict[str, Any]] = None) -> dict[str, Any]:
+    async def _call_external(
+        self, function_name: str, payload: Optional[dict[str, Any]] = None
+    ) -> dict[str, Any]:
         client = await TransportProviderFactory.create_client(
             name=function_name,
             protocols=[ProtocolType.ZENOH],

@@ -119,7 +119,9 @@ class BaseEventBridge(ABC):
             self._throttle_map.pop(topic, None)
         logger.debug(
             "%s.setThrottle: topic=%r rate_ms=%.0f",
-            type(self).__name__, topic, rate_ms,
+            type(self).__name__,
+            topic,
+            rate_ms,
         )
 
     def intercept(self, topic: str, fn: Callable[[dict], dict]) -> None:
@@ -136,7 +138,9 @@ class BaseEventBridge(ABC):
         self._interceptors.setdefault(topic, []).append(fn)
         logger.debug(
             "%s.intercept: registered fn=%s for topic=%r",
-            type(self).__name__, fn.__name__, topic,
+            type(self).__name__,
+            fn.__name__,
+            topic,
         )
 
     async def checkHealth(self) -> dict:
@@ -159,7 +163,9 @@ class BaseEventBridge(ABC):
                 healthy = False
                 logger.warning(
                     "%s.checkHealth: queue near-full — topic=%r fill=%.0f%%",
-                    type(self).__name__, info.get("topic", "?"), fill * 100,
+                    type(self).__name__,
+                    info.get("topic", "?"),
+                    fill * 100,
                 )
                 try:
                     await self.publish(
@@ -202,7 +208,10 @@ class BaseEventBridge(ABC):
             except Exception as exc:
                 logger.warning(
                     "%s._apply_interceptors: fn=%s topic=%r raised %s",
-                    type(self).__name__, fn.__name__, topic, exc,
+                    type(self).__name__,
+                    fn.__name__,
+                    topic,
+                    exc,
                 )
         return payload
 

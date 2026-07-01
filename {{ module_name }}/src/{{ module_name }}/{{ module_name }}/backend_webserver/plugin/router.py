@@ -44,6 +44,7 @@ _POOL_PATH = Path(os.getenv("PLUGIN_POOL_PATH", "/host/plugin_pool"))
 # GET /assets/ — Asset proxy
 # ---------------------------------------------------------------------------
 
+
 @router.get(
     "/assets/{plugin_id}/{version}/{file_path:path}",
     summary="Asset proxy: plugin files (JS, CSS, WASM, SVG)",
@@ -112,6 +113,7 @@ async def serve_plugin_asset(plugin_id: str, version: str, file_path: str):
 # GET /resolve_plugins — Slot manifest (scope-based, via PluginGateway)
 # ---------------------------------------------------------------------------
 
+
 @router.get(
     "/resolve_plugins",
     response_model=UiManifestResponse,
@@ -153,6 +155,7 @@ async def resolve_plugins(
 # ---------------------------------------------------------------------------
 # POST /{plugin_id}/call — Generic WASM plugin call
 # ---------------------------------------------------------------------------
+
 
 @router.post(
     "/{plugin_id}/call",

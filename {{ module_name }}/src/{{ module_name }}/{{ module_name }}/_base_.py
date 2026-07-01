@@ -4,7 +4,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Optional
 
-VYRA_SLIM = os.getenv('VYRA_SLIM', 'false').lower() == 'true'
+VYRA_SLIM = os.getenv("VYRA_SLIM", "false").lower() == "true"
 if not VYRA_SLIM:
     from ament_index_python.packages import get_package_share_directory  # pyright: ignore[reportMissingImports]
 
@@ -26,7 +26,7 @@ from vyra_base.helper.file_writer import FileWriter
 from .logging_config import get_logger, log_exception, log_function_call, log_function_result
 
 if __package__:
-    PACKAGE_NAME = __package__.split('.')[0]
+    PACKAGE_NAME = __package__.split(".")[0]
 else:
     sys.exit("Package name not found. Please run this script as part of a package.")
 
@@ -72,18 +72,18 @@ def _get_workspace_root() -> Path:
 async def load_resource(package_name: str, resource_name: Path) -> Any:
     """
     Load a resource file from a VYRA package.
-    
+
     Supports .ini, .json, .yaml, and .yml files.
     In SLIM mode the Python source tree is searched; in FULL mode the ROS2
     ament package share directory is used.
-    
+
     Args:
         package_name: Name of the package
         resource_name: Path to the resource relative to the package directory
-        
+
     Returns:
         Parsed resource content
-        
+
     Raises:
         FileNotFoundError: If resource file doesn't exist
         ValueError: If file type is not supported
@@ -93,9 +93,9 @@ async def load_resource(package_name: str, resource_name: Path) -> Any:
         function="load_resource",
         package=package_name,
         resource=str(resource_name),
-        file_type=resource_name.suffix
+        file_type=resource_name.suffix,
     )
-    
+
     try:
         package_path = _get_package_dir(package_name)
         resource_path: Path = package_path / resource_name
@@ -105,49 +105,47 @@ async def load_resource(package_name: str, resource_name: Path) -> Any:
                 "resource_not_found",
                 package=package_name,
                 resource=str(resource_name),
-                full_path=str(resource_path)
+                full_path=str(resource_path),
             )
-            raise FileNotFoundError(
-                f"Resource {resource_name} not found in package {package_name}"
-            )
-        
+            raise FileNotFoundError(f"Resource {resource_name} not found in package {package_name}")
+
         logger.debug(
             "loading_resource",
             package=package_name,
             path=str(resource_path),
-            file_type=resource_name.suffix
+            file_type=resource_name.suffix,
         )
 
         result = None
         match resource_name.suffix:
-            case '.ini':
+            case ".ini":
                 result = await FileReader.open_ini_file(resource_path)
-            case '.json':
+            case ".json":
                 result = await FileReader.open_json_file(resource_path)
-            case '.yaml' | '.yml':
+            case ".yaml" | ".yml":
                 result = await FileReader.open_yaml_file(resource_path)
             case _:
                 logger.error(
                     "unsupported_file_type",
                     file_type=resource_name.suffix,
-                    supported_types=['.ini', '.json', '.yaml', '.yml']
+                    supported_types=[".ini", ".json", ".yaml", ".yml"],
                 )
                 raise ValueError(
                     f"Unsupported file type: {resource_name.suffix}. "
                     "Supported types are .ini, .json, .yaml/.yml"
                 )
-        
+
         log_function_result(
             logger,
             success=True,
             function="load_resource",
             package=package_name,
             resource=str(resource_name),
-            data_size=len(str(result)) if result else 0
+            data_size=len(str(result)) if result else 0,
         )
-        
+
         return result
-        
+
     except Exception as e:
         log_exception(
             logger,
@@ -155,40 +153,43 @@ async def load_resource(package_name: str, resource_name: Path) -> Any:
             context={
                 "function": "load_resource",
                 "package": package_name,
-                "resource": str(resource_name)
-            }
+                "resource": str(resource_name),
+            },
         )
         raise
+
 
 async def _create_base_interfaces() -> list[FunctionConfigEntry]:
     """
     Create base interface configurations from metadata files.
-    
+
     Loads interface metadata from JSON files and creates FunctionConfigEntry objects
     for ROS2 services, topics, and actions.
-    
+
     Returns:
         List of configured interface entries
-        
+
     Raises:
         KeyError: If required field is missing in interface metadata
         TypeError: If interface data has type errors
     """
     log_function_call(logger, function="_create_base_interfaces")
-    
+
     interface_metadata: list = []
 
     import vyra_base as _vyra_base_module
 
     module_name = os.getenv("MODULE_NAME", "")
-    interfaces_pkg = f'{module_name}_interfaces'
+    interfaces_pkg = f"{module_name}_interfaces"
 
     # Dynamically discover all *.meta.json files from the installed config directory
     try:
-        config_dir = _get_package_dir(interfaces_pkg) / 'config'
-        all_meta_files = sorted(config_dir.glob('*.meta.json'))
+        config_dir = _get_package_dir(interfaces_pkg) / "config"
+        all_meta_files = sorted(config_dir.glob("*.meta.json"))
     except Exception as e:
-        log_exception(logger, e, context={"operation": "discover_meta_files", "package": interfaces_pkg})
+        log_exception(
+            logger, e, context={"operation": "discover_meta_files", "package": interfaces_pkg}
+        )
         raise
 
     # Validate against schema — warn and skip invalid files
@@ -196,10 +197,7 @@ async def _create_base_interfaces() -> list[FunctionConfigEntry]:
 
     for bad_file, reason in invalid_files:
         logger.warning(
-            "invalid_meta_json_skipped",
-            file=bad_file.name,
-            reason=reason,
-            package=interfaces_pkg
+            "invalid_meta_json_skipped", file=bad_file.name, reason=reason, package=interfaces_pkg
         )
 
     logger.debug(
@@ -207,102 +205,100 @@ async def _create_base_interfaces() -> list[FunctionConfigEntry]:
         module_name=module_name,
         discovered=len(all_meta_files),
         valid=len(valid_files),
-        invalid=len(invalid_files)
+        invalid=len(invalid_files),
     )
 
     for meta_file in valid_files:
         try:
             logger.debug("loading_interface_metadata", module=module_name, file=meta_file.name)
-            metadata = await load_resource(interfaces_pkg, Path('config', meta_file.name))
+            metadata = await load_resource(interfaces_pkg, Path("config", meta_file.name))
             interface_metadata.extend(metadata)
-            logger.debug("interface_metadata_loaded", file=meta_file.name, entries_count=len(metadata))
+            logger.debug(
+                "interface_metadata_loaded", file=meta_file.name, entries_count=len(metadata)
+            )
         except Exception as e:
-            log_exception(logger, e, context={"operation": "load_interface_metadata", "file": meta_file.name})
+            log_exception(
+                logger, e, context={"operation": "load_interface_metadata", "file": meta_file.name}
+            )
             raise
 
     interface_functions: list[FunctionConfigEntry] = []
-    
-    logger.debug(
-        "processing_interface_metadata",
-        total_entries=len(interface_metadata)
-    )
+
+    logger.debug("processing_interface_metadata", total_entries=len(interface_metadata))
 
     for idx, metadata in enumerate(interface_metadata):
         try:
-            if metadata['type'] == FunctionConfigBaseTypes.service.value:
+            if metadata["type"] == FunctionConfigBaseTypes.service.value:
                 ifaces = []
                 logger.debug(
                     "processing_callable_interface",
                     index=idx,
-                    function_name=metadata.get('functionname', 'unknown'),
-                    filetypes=metadata.get('filetype', [])
+                    function_name=metadata.get("functionname", "unknown"),
+                    filetypes=metadata.get("filetype", []),
                 )
-                
-                for iface_type in metadata['filetype']:
-                    filename, filetype = iface_type.split('.')
-                
-                    if filetype in ['msg', 'srv', 'action']:
+
+                for iface_type in metadata["filetype"]:
+                    filename, filetype = iface_type.split(".")
+
+                    if filetype in ["msg", "srv", "action"]:
                         try:
-                            iface_module = sys.modules[f'{module_name}_interfaces.{filetype}']
+                            iface_module = sys.modules[f"{module_name}_interfaces.{filetype}"]
                             iface_class = getattr(iface_module, filename)
                             ifaces.append(iface_class)
                             logger.debug(
                                 "interface_type_loaded",
                                 filename=filename,
                                 filetype=filetype,
-                                class_name=iface_class.__name__
+                                class_name=iface_class.__name__,
                             )
                         except (KeyError, AttributeError) as e:
                             logger.error(
                                 "interface_type_load_failed",
                                 filename=filename,
                                 filetype=filetype,
-                                module=f'{module_name}_interfaces.{filetype}',
-                                error=str(e)
+                                module=f"{module_name}_interfaces.{filetype}",
+                                error=str(e),
                             )
                             raise
                     else:
                         ifaces.append(iface_type)
-                        logger.debug(
-                            "custom_interface_type",
-                            iface_type=iface_type
-                        )
+                        logger.debug("custom_interface_type", iface_type=iface_type)
 
-                metadata['interfacetypes'] = ifaces
-                
+                metadata["interfacetypes"] = ifaces
+
                 displaystyle = FunctionConfigDisplaystyle(
-                    visible=metadata.get('displaystyle', {}).get('visible', False),
-                    published=metadata.get('displaystyle', {}).get('published', False)
+                    visible=metadata.get("displaystyle", {}).get("visible", False),
+                    published=metadata.get("displaystyle", {}).get("published", False),
                 )
 
                 interface_entry = FunctionConfigEntry(
                     tags=[
                         FunctionConfigTags(t)
-                        for t in metadata.get('tags', [])
+                        for t in metadata.get("tags", [])
                         if t in FunctionConfigTags._value2member_map_
                     ],
-                    type=metadata['type'],
-                    interfacetypes=metadata['interfacetypes'],
-                    functionname=metadata['functionname'],
-                    displayname=metadata['displayname'],
-                    description=metadata['description'],
+                    type=metadata["type"],
+                    interfacetypes=metadata["interfacetypes"],
+                    functionname=metadata["functionname"],
+                    displayname=metadata["displayname"],
+                    description=metadata["description"],
                     displaystyle=displaystyle,
-                    params=metadata['params'],
-                    returns=metadata['returns'],
-                    namespace=metadata.get('namespace', None),
-                    qosprofile=metadata.get('qosprofile', 10),
+                    params=metadata["params"],
+                    returns=metadata["returns"],
+                    namespace=metadata.get("namespace", None),
+                    qosprofile=metadata.get("qosprofile", 10),
                     callbacks=None,
-                    periodic=None
+                    periodic=None,
                 )
                 interface_functions.append(interface_entry)
-                
+
                 logger.debug(
                     "interface_entry_created",
-                    function_name=metadata['functionname'],
-                    interface_types_count=len(ifaces)
+                    function_name=metadata["functionname"],
+                    interface_types_count=len(ifaces),
                 )
 
-            elif metadata['type'] in (
+            elif metadata["type"] in (
                 FunctionConfigBaseTypes.message.value,
                 FunctionConfigBaseTypes.action.value,
             ):
@@ -311,62 +307,58 @@ async def _create_base_interfaces() -> list[FunctionConfigEntry]:
                 logger.debug(
                     "processing_non_service_interface",
                     index=idx,
-                    type=metadata['type'],
-                    function_name=metadata.get('functionname', 'unknown'),
+                    type=metadata["type"],
+                    function_name=metadata.get("functionname", "unknown"),
                 )
                 displaystyle = FunctionConfigDisplaystyle(
-                    visible=metadata.get('displaystyle', {}).get('visible', False),
-                    published=metadata.get('displaystyle', {}).get('published', False)
+                    visible=metadata.get("displaystyle", {}).get("visible", False),
+                    published=metadata.get("displaystyle", {}).get("published", False),
                 )
                 interface_entry = FunctionConfigEntry(
                     tags=[
                         FunctionConfigTags(t)
-                        for t in metadata.get('tags', [])
+                        for t in metadata.get("tags", [])
                         if t in FunctionConfigTags._value2member_map_
                     ],
-                    type=metadata['type'],
-                    interfacetypes=metadata.get('interfacetypes', None),
-                    functionname=metadata['functionname'],
-                    displayname=metadata['displayname'],
-                    description=metadata['description'],
+                    type=metadata["type"],
+                    interfacetypes=metadata.get("interfacetypes", None),
+                    functionname=metadata["functionname"],
+                    displayname=metadata["displayname"],
+                    description=metadata["description"],
                     displaystyle=displaystyle,
-                    params=metadata.get('params', []),
-                    returns=metadata.get('returns', []),
-                    namespace=metadata.get('namespace', None),
-                    qosprofile=metadata.get('qosprofile', 10),
+                    params=metadata.get("params", []),
+                    returns=metadata.get("returns", []),
+                    namespace=metadata.get("namespace", None),
+                    qosprofile=metadata.get("qosprofile", 10),
                     callbacks=None,
-                    periodic=None
+                    periodic=None,
                 )
                 interface_functions.append(interface_entry)
                 logger.debug(
                     "interface_entry_created",
-                    function_name=metadata['functionname'],
-                    type=metadata['type'],
+                    function_name=metadata["functionname"],
+                    type=metadata["type"],
                 )
 
             else:
                 logger.warning(
                     "unknown_interface_type_skipped",
                     index=idx,
-                    type=metadata.get('type'),
-                    function_name=metadata.get('functionname', 'unknown'),
+                    type=metadata.get("type"),
+                    function_name=metadata.get("functionname", "unknown"),
                 )
-                
+
         except KeyError as e:
             logger.error(
                 "missing_interface_field",
                 missing_key=str(e),
                 metadata_snippet=str(metadata)[:200],
-                index=idx
+                index=idx,
             )
             log_exception(
                 logger,
                 e,
-                context={
-                    "operation": "create_interface_entry",
-                    "index": idx,
-                    "metadata": metadata
-                }
+                context={"operation": "create_interface_entry", "index": idx, "metadata": metadata},
             )
             raise
         except TypeError as e:
@@ -374,16 +366,12 @@ async def _create_base_interfaces() -> list[FunctionConfigEntry]:
                 "interface_type_error",
                 error=str(e),
                 metadata_snippet=str(metadata)[:200],
-                index=idx
+                index=idx,
             )
             log_exception(
                 logger,
                 e,
-                context={
-                    "operation": "create_interface_entry",
-                    "index": idx,
-                    "metadata": metadata
-                }
+                context={"operation": "create_interface_entry", "index": idx, "metadata": metadata},
             )
             raise
 
@@ -392,62 +380,59 @@ async def _create_base_interfaces() -> list[FunctionConfigEntry]:
         success=True,
         function="_create_base_interfaces",
         interface_count=len(interface_functions),
-        interface_names=[f.functionname for f in interface_functions]
+        interface_names=[f.functionname for f in interface_functions],
     )
-    
+
     return interface_functions
+
 
 async def _load_storage_config() -> dict[str, Any]:
     """
     Load the storage configuration from /workspace/config/storage_config.ini file.
-    
+
     Returns:
         Storage configuration dictionary
-        
+
     Raises:
         FileNotFoundError: If storage_config.ini file is not found
         ValueError: If file is not valid or missing required sections
     """
     log_function_call(logger, function="_load_storage_config", package=PACKAGE_NAME)
-    
+
     try:
-        config_path = _get_workspace_root() / 'config' / 'storage_config.ini'
-        
+        config_path = _get_workspace_root() / "config" / "storage_config.ini"
+
         if not config_path.exists():
-            logger.error(
-                "storage_config_not_found",
-                path=str(config_path)
-            )
-            raise FileNotFoundError(
-                f"Storage configuration file not found at {config_path}"
-            )
-        
+            logger.error("storage_config_not_found", path=str(config_path))
+            raise FileNotFoundError(f"Storage configuration file not found at {config_path}")
+
         config = await FileReader.open_ini_file(config_path)
         log_function_result(
             logger,
             success=True,
             function="_load_storage_config",
-            config_keys=list(config.keys()) if isinstance(config, dict) else "not_dict"
+            config_keys=list(config.keys()) if isinstance(config, dict) else "not_dict",
         )
         return config
     except Exception as e:
         log_exception(logger, e, context={"function": "_load_storage_config"})
         raise
 
+
 async def _load_module_config() -> dict[str, Any]:
     """
     Load the module configuration from .module/module_data.yaml and
     .module/module_params.yaml (security, simulation sections).
-    
+
     Returns:
         Module configuration dictionary
-        
+
     Raises:
         FileNotFoundError: If module_data.yaml file is not found
         ValueError: If module_data.yaml is empty or invalid
     """
     log_function_call(logger, function="_load_module_config", package=PACKAGE_NAME)
-    
+
     try:
         workspace_root = _get_workspace_root()
         data_path = workspace_root / ".module" / "module_data.yaml"
@@ -455,9 +440,7 @@ async def _load_module_config() -> dict[str, Any]:
 
         if not data_path.exists():
             logger.error("module_data_not_found", path=str(data_path))
-            raise FileNotFoundError(
-                f"Module data file not found at {data_path}"
-            )
+            raise FileNotFoundError(f"Module data file not found at {data_path}")
 
         module_data = await FileReader.open_yaml_file(data_path)
         if not module_data:
@@ -480,25 +463,26 @@ async def _load_module_config() -> dict[str, Any]:
             logger,
             success=True,
             function="_load_module_config",
-            config_keys=list(config.keys()) if isinstance(config, dict) else "not_dict"
+            config_keys=list(config.keys()) if isinstance(config, dict) else "not_dict",
         )
         return config
     except Exception as e:
         log_exception(logger, e, context={"function": "_load_module_config"})
         raise
 
+
 async def _load_module_data() -> Optional[dict[str, Any]]:
     """
     Load the module data from .module/module_data.yaml file.
-    
+
     Returns:
         Module data dictionary or None if not found
-        
+
     Raises:
         ValueError: If file is not valid or missing required sections
     """
     log_function_call(logger, function="_load_module_data", package=PACKAGE_NAME)
-    
+
     data_path: Path = _get_workspace_root() / ".module" / "module_data.yaml"
 
     logger.debug("checking_module_data_file", path=str(data_path))
@@ -508,17 +492,13 @@ async def _load_module_data() -> Optional[dict[str, Any]]:
         logger.info(
             "module_data_loaded",
             path=str(data_path),
-            data_keys=list(module_data.keys()) if module_data else []
+            data_keys=list(module_data.keys()) if module_data else [],
         )
         log_function_result(logger, success=True, function="_load_module_data")
         return module_data
-        
+
     except FileNotFoundError as e:
-        logger.warning(
-            "module_data_not_found",
-            path=str(data_path),
-            will_create=True
-        )
+        logger.warning("module_data_not_found", path=str(data_path), will_create=True)
         # Create .module directory if it does not exist
         if not data_path.parent.exists():
             logger.debug("creating_module_directory", path=str(data_path.parent))
@@ -528,48 +508,50 @@ async def _load_module_data() -> Optional[dict[str, Any]]:
         log_exception(logger, e, context={"function": "_load_module_data", "path": str(data_path)})
         raise
 
+
 async def _write_module_data(data: dict[str, Any]) -> None:
     """
     Write module data to .module/module_data.yaml file.
-    
+
     Args:
         data: Module data dictionary to write
-        
+
     Raises:
         FileNotFoundError: If resource directory does not exist
         ValueError: If data is not valid or missing required sections
     """
     log_function_call(logger, function="_write_module_data", data_keys=list(data.keys()))
-    
+
     try:
         data_path: Path = _get_workspace_root() / ".module" / "module_data.yaml"
 
         logger.debug("writing_module_data", path=str(data_path))
         await FileWriter.write_yaml_file(data_path, data)
-        
+
         logger.info("module_data_written", path=str(data_path), data_keys=list(data.keys()))
         log_function_result(logger, success=True, function="_write_module_data")
-        
+
     except Exception as e:
         log_exception(logger, e, context={"function": "_write_module_data", "path": str(data_path)})
         raise
 
+
 async def _load_project_settings() -> dict[str, Any]:
     """
     Load project settings from pyproject.toml file.
-    
+
     Returns:
         Project settings dictionary with version information
-        
+
     Raises:
         FileNotFoundError: If pyproject.toml not found
         ValueError: If settings are missing or invalid
     """
     log_function_call(logger, function="_load_project_settings", package=PACKAGE_NAME)
-    
+
     try:
         pyproject_path: Path = _get_workspace_root() / ".module" / "module_data.yaml"
-        
+
         logger.debug("loading_pyproject", path=str(pyproject_path))
         module_settings: Optional[dict[str, Any]] = await FileReader.open_yaml_file(pyproject_path)
 
@@ -579,16 +561,18 @@ async def _load_project_settings() -> dict[str, Any]:
 
         logger.info(
             "project_settings_loaded",
-            module_name=module_settings.get('name', 'unknown'),
-            version=module_settings.get('version', 'unknown'),
-            blueprints=module_settings.get('blueprints', 'unknown')
+            module_name=module_settings.get("name", "unknown"),
+            version=module_settings.get("version", "unknown"),
+            blueprints=module_settings.get("blueprints", "unknown"),
         )
         log_function_result(logger, success=True, function="_load_project_settings")
-        
+
         return module_settings
-        
+
     except Exception as e:
-        log_exception(logger, e, context={"function": "_load_project_settings", "path": str(pyproject_path)})
+        log_exception(
+            logger, e, context={"function": "_load_project_settings", "path": str(pyproject_path)}
+        )
         raise
 
 
@@ -597,11 +581,12 @@ def _resolve_module_blueprints(
     module_data: Optional[dict[str, Any]] = None,
 ) -> str:
     """Resolve the module blueprint value from canonical blueprint settings.
-    
+
     Handles both string and list values from YAML. A YAML list like
     ``[test, basic]`` is joined to ``"test, basic"`` rather than being
     converted to the Python repr ``"['test', 'basic']"``.
     """
+
     def _normalise(value: Any) -> Optional[str]:
         if value in (None, "", "null"):
             return None
@@ -628,7 +613,7 @@ def _build_module_data_payload(
     module_data: Optional[dict[str, Any]] = None,
 ) -> dict[str, Any]:
     """Build a module_data payload that persists all canonical fields.
-    
+
     Preserves ``author``, ``alias`` and ``display_name`` from the existing
     ``module_data`` so that these fields are never stripped when the file is
     rewritten on startup.
@@ -654,166 +639,153 @@ def _build_module_data_payload(
 
     return payload
 
+
 async def build_entity(project_settings) -> VyraEntity:
     """
     Build a VyraEntity from project settings and module data.
-    
+
     Creates or recovers module entry, state entry, news entry, and error entry.
     Sets up storage and transient data types.
-    
+
     Args:
         project_settings: Project configuration from pyproject.toml
-        
+
     Returns:
         Configured VyraEntity instance
-        
+
     Raises:
         ValueError: If module data is invalid or incomplete
     """
     log_function_call(
-        logger,
-        function="build_entity",
-        module_name=project_settings.get('module_name', 'unknown')
+        logger, function="build_entity", module_name=project_settings.get("module_name", "unknown")
     )
-    
+
     try:
         logger.debug("loading_module_data")
         module_data: Optional[dict] = await _load_module_data()
         normalized_module_data = _build_module_data_payload(project_settings, module_data)
-        needed_fields: list[str] = ['uuid', 'name', 'description', 'version']
-        has_blueprints_field = isinstance(module_data, dict) and 'blueprints' in module_data
+        needed_fields: list[str] = ["uuid", "name", "description", "version"]
+        has_blueprints_field = isinstance(module_data, dict) and "blueprints" in module_data
 
         if not module_data or module_data == {}:
             logger.info(
-                "creating_new_module_entry",
-                reason="module_data_empty",
-                source="project_settings"
+                "creating_new_module_entry", reason="module_data_empty", source="project_settings"
             )
 
             try:
                 me = ModuleEntry(
-                    uuid=normalized_module_data['uuid'],
-                    name=normalized_module_data['name'],
-                    blueprints=normalized_module_data['blueprints'],
-                    description=normalized_module_data['description'],
-                    version=normalized_module_data['version'],
+                    uuid=normalized_module_data["uuid"],
+                    name=normalized_module_data["name"],
+                    blueprints=normalized_module_data["blueprints"],
+                    description=normalized_module_data["description"],
+                    version=normalized_module_data["version"],
                 )
             except TypeError as exc:
                 if "blueprints" not in str(exc):
                     raise
                 logger.warning(
                     "module_entry_without_blueprints_fallback",
-                    reason="base_moduleentry_signature_legacy"
+                    reason="base_moduleentry_signature_legacy",
                 )
                 me = ModuleEntry(
-                    uuid=normalized_module_data['uuid'],
-                    name=normalized_module_data['name'],
-                    blueprints=normalized_module_data['blueprints'],
-                    description=normalized_module_data['description'],
-                    version=normalized_module_data['version'],
+                    uuid=normalized_module_data["uuid"],
+                    name=normalized_module_data["name"],
+                    blueprints=normalized_module_data["blueprints"],
+                    description=normalized_module_data["description"],
+                    version=normalized_module_data["version"],
                 )
             logger.debug("new_module_entry_created", uuid=me.uuid, name=me.name)
-            
+
         elif not all(field in module_data for field in needed_fields) or not has_blueprints_field:
             missing_field: list[str] = [
                 field for field in needed_fields if field not in module_data
             ]
             if not has_blueprints_field:
-                missing_field.append('blueprints')
-            
+                missing_field.append("blueprints")
+
             logger.warning(
-                "module_data_incomplete",
-                missing_fields=missing_field,
-                will_recover=True
+                "module_data_incomplete", missing_fields=missing_field, will_recover=True
             )
 
             try:
                 me = ModuleEntry(
-                    uuid=normalized_module_data['uuid'],
-                    name=normalized_module_data['name'],
-                    blueprints=normalized_module_data['blueprints'],
-                    description=normalized_module_data['description'],
-                    version=normalized_module_data['version'],
+                    uuid=normalized_module_data["uuid"],
+                    name=normalized_module_data["name"],
+                    blueprints=normalized_module_data["blueprints"],
+                    description=normalized_module_data["description"],
+                    version=normalized_module_data["version"],
                 )
             except TypeError as exc:
                 if "blueprints" not in str(exc):
                     raise
                 logger.warning(
                     "module_entry_without_blueprints_fallback",
-                    reason="base_moduleentry_signature_legacy"
+                    reason="base_moduleentry_signature_legacy",
                 )
                 me = ModuleEntry(
-                    uuid=normalized_module_data['uuid'],
-                    name=normalized_module_data['name'],
-                    blueprints=normalized_module_data['blueprints'],
-                    description=normalized_module_data['description'],
-                    version=normalized_module_data['version'],
+                    uuid=normalized_module_data["uuid"],
+                    name=normalized_module_data["name"],
+                    blueprints=normalized_module_data["blueprints"],
+                    description=normalized_module_data["description"],
+                    version=normalized_module_data["version"],
                 )
 
             logger.info(
-                "module_data_recovered",
-                uuid=me.uuid,
-                name=me.name,
-                recovered_fields=missing_field
+                "module_data_recovered", uuid=me.uuid, name=me.name, recovered_fields=missing_field
             )
         else:
             logger.debug(
-                "module_data_complete",
-                uuid=module_data.get('uuid'),
-                name=module_data.get('name')
+                "module_data_complete", uuid=module_data.get("uuid"), name=module_data.get("name")
             )
 
-            if module_data['uuid'] in [None, "", "null"]:
-                logger.warning(
-                    "module_uuid_empty",
-                    generating_new=True
-                )
-                module_data['uuid'] = ModuleEntry.gen_uuid()
+            if module_data["uuid"] in [None, "", "null"]:
+                logger.warning("module_uuid_empty", generating_new=True)
+                module_data["uuid"] = ModuleEntry.gen_uuid()
 
             normalized_module_data = _build_module_data_payload(project_settings, module_data)
 
             try:
                 me = ModuleEntry(
-                    uuid=normalized_module_data['uuid'],
-                    name=normalized_module_data['name'],
-                    blueprints=normalized_module_data['blueprints'],
-                    description=normalized_module_data['description'],
-                    version=normalized_module_data['version'],
+                    uuid=normalized_module_data["uuid"],
+                    name=normalized_module_data["name"],
+                    blueprints=normalized_module_data["blueprints"],
+                    description=normalized_module_data["description"],
+                    version=normalized_module_data["version"],
                 )
             except TypeError as exc:
                 if "blueprints" not in str(exc):
                     raise
                 logger.warning(
                     "module_entry_without_blueprints_fallback",
-                    reason="base_moduleentry_signature_legacy"
+                    reason="base_moduleentry_signature_legacy",
                 )
                 me = ModuleEntry(
-                    uuid=normalized_module_data['uuid'],
-                    name=normalized_module_data['name'],
-                    blueprints=normalized_module_data['blueprints'],
-                    description=normalized_module_data['description'],
-                    version=normalized_module_data['version'],
+                    uuid=normalized_module_data["uuid"],
+                    name=normalized_module_data["name"],
+                    blueprints=normalized_module_data["blueprints"],
+                    description=normalized_module_data["description"],
+                    version=normalized_module_data["version"],
                 )
             logger.debug("module_entry_loaded", uuid=me.uuid, name=me.name)
-        
+
         # Persist module data
         logger.debug("persisting_module_data")
         await _write_module_data(normalized_module_data)
-        
+
         logger.info(
             "module_entry_ready",
             uuid=me.uuid,
             name=me.name,
-            blueprints=normalized_module_data['blueprints'],
-            version=me.version
+            blueprints=normalized_module_data["blueprints"],
+            version=me.version,
         )
 
         # Create state, news, and error entries
         logger.debug("creating_state_entries")
         se = StateEntry(
-            previous='initial',
-            trigger='',
-            current='running',
+            previous="initial",
+            trigger="",
+            current="running",
             module_id=me.uuid,
             module_name=me.name,
             timestamp=datetime.now(),
@@ -828,7 +800,7 @@ async def build_entity(project_settings) -> VyraEntity:
             module_id=me.uuid,
             module_name=me.name,
         )
-        
+
         logger.debug("state_entries_created")
 
         # Load configurations
@@ -844,7 +816,7 @@ async def build_entity(project_settings) -> VyraEntity:
             module_entry=me,
             news_entry=ne,
             error_entry=ee,
-            module_config=module_config
+            module_config=module_config,
         )
 
         # Transient and parameter type dicts are left empty;
@@ -858,30 +830,21 @@ async def build_entity(project_settings) -> VyraEntity:
         logger.debug("entity_startup_complete")
 
         logger.debug("setting_up_entity_storage")
-        await entity.setup_storage(
-            storage_config, 
-            transient_base_types, 
-            parameter_types
-        )
-        
-        logger.info(
-            "entity_built_successfully",
-            module=me.name,
-            uuid=me.uuid,
-            version=me.version
-        )
+        await entity.setup_storage(storage_config, transient_base_types, parameter_types)
+
+        logger.info("entity_built_successfully", module=me.name, uuid=me.uuid, version=me.version)
         log_function_result(logger, success=True, function="build_entity", module=me.name)
 
         return entity
-        
+
     except Exception as e:
         log_exception(
             logger,
             e,
             context={
                 "function": "build_entity",
-                "module_name": project_settings.get('module_name', 'unknown')
-            }
+                "module_name": project_settings.get("module_name", "unknown"),
+            },
         )
         raise
 
@@ -889,22 +852,18 @@ async def build_entity(project_settings) -> VyraEntity:
 async def create_db_storage(entity: VyraEntity) -> None:
     """
     Create database storage for the entity.
-    
+
     Configuration is loaded from this ROS2 package's storage_config.ini file.
-    
+
     Args:
         entity: VyraEntity for which database storage should be created
-        
+
     Raises:
         FileNotFoundError: If storage_config.ini file is not found
         ValueError: If config is invalid or missing required sections
     """
-    log_function_call(
-        logger,
-        function="create_db_storage",
-        module_name=entity.module_entry.name
-    )
-    
+    log_function_call(logger, function="create_db_storage", module_name=entity.module_entry.name)
+
     try:
         from vyra_base.com.clients.sql import DbAccess
 
@@ -915,13 +874,10 @@ async def create_db_storage(entity: VyraEntity) -> None:
         logger.info(
             "creating_db_access",
             module=entity.module_entry.name,
-            db_type=storage_config.get('type', 'unknown')
+            db_type=storage_config.get("type", "unknown"),
         )
-        
-        db_access = DbAccess(
-            module_name=entity.module_entry.name,
-            db_config=storage_config
-        )
+
+        db_access = DbAccess(module_name=entity.module_entry.name, db_config=storage_config)
 
         logger.debug("creating_database_tables")
         await db_access.create_all_tables()
@@ -929,64 +885,52 @@ async def create_db_storage(entity: VyraEntity) -> None:
 
         logger.debug("registering_storage_in_entity")
         entity.register_storage(db_access)
-        
-        logger.info(
-            "db_storage_ready",
-            module=entity.module_entry.name
-        )
+
+        logger.info("db_storage_ready", module=entity.module_entry.name)
         log_function_result(logger, success=True, function="create_db_storage")
-        
+
     except Exception as e:
         log_exception(
-            logger,
-            e,
-            context={
-                "function": "create_db_storage",
-                "module": entity.module_entry.name
-            }
+            logger, e, context={"function": "create_db_storage", "module": entity.module_entry.name}
         )
         raise
+
 
 async def build_base():
     """
     Build base entity configuration.
-    
+
     Main initialization function that:
     1. Loads project settings
     2. Builds VyraEntity
     3. Creates base interfaces
     4. Sets up ROS2 services
     5. Creates database storage
-    
+
     Returns:
         Fully configured VyraEntity
-        
+
     Raises:
         Various exceptions from underlying functions
     """
     log_function_call(logger, function="build_base")
-    
+
     try:
         logger.info("build_base_started")
-        
+
         # Load project settings
         logger.debug("loading_project_settings")
         project_settings: dict[str, Any] = await _load_project_settings()
         logger.info(
-            "project_settings_loaded",
-            module_name=project_settings.get('module_name', 'unknown')
+            "project_settings_loaded", module_name=project_settings.get("module_name", "unknown")
         )
-        
+
         # Build entity
         logger.debug("building_entity")
         entity: VyraEntity = await build_entity(project_settings)
-        logger.info(
-            "entity_built",
-            module=entity.module_entry.name,
-            uuid=entity.module_entry.uuid
-        )
-        
-        # VyraEntity.__init__() calls register_callables_callbacks(self) which adds 
+        logger.info("entity_built", module=entity.module_entry.name, uuid=entity.module_entry.uuid)
+
+        # VyraEntity.__init__() calls register_callables_callbacks(self) which adds
         # entity methods to DataSpace but doesn't create ROS2 services.
         # We need to create the actual ROS2 services by loading interfaces with callbacks.
 
@@ -1000,15 +944,9 @@ async def build_base():
             # New API: registers with ManifestResolver + keeps legacy registry in sync
             entity.add_manifest_paths([interfaces_install_path])
             entity.add_schema_paths([interfaces_install_path])
-            logger.info(
-                "interface_paths_set",
-                paths=[str(interfaces_install_path)]
-            )
+            logger.info("interface_paths_set", paths=[str(interfaces_install_path)])
         else:
-            logger.warning(
-                "interface_paths_not_found",
-                path=str(interfaces_install_path)
-            )
+            logger.warning("interface_paths_not_found", path=str(interfaces_install_path))
 
         # Load interface definitions via the new load_interface_definitions function
         # (replaces _create_base_interfaces).  Returns FunctionConfigEntry list for
@@ -1040,6 +978,7 @@ async def build_base():
         # StateManager is module-specific: create it here so its @remote_actionServer
         # callbacks are bound before set_interfaces() activates the transport.
         from .state.state_manager import StateManager
+
         state_manager = StateManager(entity)
         logger.debug("state_manager_created")
 
@@ -1100,7 +1039,7 @@ async def build_base():
         # await entity.set_interfaces(base_interfaces)
 
         logger.debug("endpoint_orchestrator_will_activate_transports")
-        
+
         # Create database storage
         logger.debug("creating_db_storage")
         await create_db_storage(entity)
@@ -1113,14 +1052,11 @@ async def build_base():
             uuid=entity.module_entry.uuid,
         )
         log_function_result(
-            logger,
-            success=True,
-            function="build_base",
-            module=entity.module_entry.name
+            logger, success=True, function="build_base", module=entity.module_entry.name
         )
 
         return entity, state_manager
-        
+
     except Exception as e:
         log_exception(logger, e, context={"function": "build_base"})
         raise

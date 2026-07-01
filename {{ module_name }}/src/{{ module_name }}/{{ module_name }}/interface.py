@@ -9,7 +9,7 @@ from typing import Any, Optional, TYPE_CHECKING
 from typing import Callable
 
 
-VYRA_SLIM = os.getenv('VYRA_SLIM', 'false').lower() == 'true'
+VYRA_SLIM = os.getenv("VYRA_SLIM", "false").lower() == "true"
 if not VYRA_SLIM:
     from ament_index_python.packages import get_package_share_directory  # pyright: ignore[reportMissingImports]
 
@@ -126,6 +126,7 @@ logger = get_logger(__name__)
 # register_endpoint_callbacks — new canonical API
 # ---------------------------------------------------------------------------
 
+
 def register_endpoint_callbacks(
     entity: "VyraEntity",
     callback_parent: object,
@@ -227,8 +228,8 @@ def register_endpoint_callbacks(
 
 # @ErrorTraceback.w_check_error_exist
 # async def auto_register_interfaces(
-#     entity: VyraEntity, 
-#     callback_list: list[Callable]=[], 
+#     entity: VyraEntity,
+#     callback_list: list[Callable]=[],
 #     callback_parent: object=None,
 #     publisher_list: list=[]) -> None:
 #     """
@@ -273,7 +274,7 @@ def register_endpoint_callbacks(
 #     # Legacy path retained for callers that pass an explicit callback_list.
 #     if not callback_list and not callback_parent:
 #         raise ValueError("Either callback_list or callback_parent must be provided.")
-    
+
 #     if not callback_list:
 #         logger.debug(
 #             "No callback_list provided, loading all remote callables from parent."
@@ -290,7 +291,7 @@ def register_endpoint_callbacks(
 #     interface_functions: list[FunctionConfigEntry] = []
 
 #     for callback in callback_list:
-#         config_list: list = [m for m in interface_metadata 
+#         config_list: list = [m for m in interface_metadata
 #                     if m['functionname'] == callback.__name__]
 
 #         if not config_list:
@@ -416,27 +417,27 @@ def register_endpoint_callbacks(
 #             f"Callback binding complete: "
 #             f"{sum(binding_results.values())}/{len(binding_results)} successful"
 #         )
-    
+
 #     await entity.set_interfaces(interface_functions)
 #     return
 
 # def _autoload_all_remote_service_from_parent(callback_parent: object) -> list:
 #     callable_list = []
-    
+
 #     logger.debug(f"Scanning {callback_parent.__class__.__name__} for remote callables...")
 #     logger.debug(f"  callback_parent type: {type(callback_parent)}")
 #     logger.debug(f"  callback_parent class: {callback_parent.__class__}")
-    
+
 #     # Check both instance and class for remote callables
 #     # This is necessary because decorator attributes might be on the class method
 #     for attr_name in dir(callback_parent):
 #         if attr_name.startswith("_"):
 #             continue
-            
+
 #         try:
 #             # Get attribute from instance (bound method)
 #             attr = getattr(callback_parent, attr_name)
-            
+
 #             # Debug specific method
 #             if attr_name == "get_interface_list":
 #                 logger.debug(f"  Checking get_interface_list:")
@@ -445,22 +446,22 @@ def register_endpoint_callbacks(
 #                 logger.debug(f"    callable: {callable(attr)}")
 #                 logger.debug(f"    has _vyra_remote_server: {hasattr(attr, '_vyra_remote_server')}")
 #                 logger.debug(f"    _vyra_remote_server value: {getattr(attr, '_vyra_remote_server', 'NOT FOUND')}")
-                
+
 #                 # Try __func__ if it's a bound method
 #                 if hasattr(attr, "__func__"):
 #                     logger.debug(f"    __func__._vyra_remote_server: {getattr(attr.__func__, '_vyra_remote_server', 'NOT FOUND')}")
-                
+
 #                 # Try class method
 #                 class_method = getattr(callback_parent.__class__, "get_interface_list", None)
 #                 if class_method:
 #                     logger.debug(f"    class method._vyra_remote_server: {getattr(class_method, '_vyra_remote_server', 'NOT FOUND')}")
-            
+
 #             # Check if it's callable and has _vyra_remote_server marker (set by @remote_service decorator)
 #             if callable(attr) and hasattr(attr, "_vyra_remote_server"):
 #                 logger.debug(f"  Found remote_service on instance: {attr_name}")
 #                 callable_list.append(attr)
 #                 continue
-            
+
 #             # If not found on instance, try the class
 #             # This handles cases where decorator is on class method
 #             if hasattr(callback_parent.__class__, attr_name):
@@ -476,7 +477,7 @@ def register_endpoint_callbacks(
 #         except Exception as e:
 #             logger.debug(f"  Unexpected error for {attr_name}: {e}")
 #             continue
-    
+
 #     logger.debug(f"Total remote callables found: {len(callable_list)}")
 #     return callable_list
 
@@ -524,8 +525,8 @@ def register_endpoint_callbacks(
 #     )
 
 
-# def _register_service_interface( 
-#         callback: Callable, 
+# def _register_service_interface(
+#         callback: Callable,
 #         metadata: dict) -> FunctionConfigEntry:
 #     """Registers a callable interface for the entity."""
 #     displaystyle = FunctionConfigDisplaystyle(

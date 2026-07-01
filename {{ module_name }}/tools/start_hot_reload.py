@@ -30,10 +30,14 @@ class HotReloadHandler(FileSystemEventHandler):
     """Handles file system events and triggers rebuild/restart via Supervisord"""
 
     def __init__(
-            self, workspace_path: str, package_name: str, node_name: str, 
-            debounce_seconds: float = 5.0, supervisord_program: str = "core",
-            slim_mode: bool = False):
-
+        self,
+        workspace_path: str,
+        package_name: str,
+        node_name: str,
+        debounce_seconds: float = 5.0,
+        supervisord_program: str = "core",
+        slim_mode: bool = False,
+    ):
         self.workspace_path = Path(workspace_path)
         self.package_name = package_name
         self.node_name = node_name
@@ -47,7 +51,9 @@ class HotReloadHandler(FileSystemEventHandler):
         self.supervisord_program = supervisord_program
         # Wait up to 60 s for supervisord to start (hot_reload launches before supervisord)
         self.use_supervisord = self._check_supervisord_available(max_wait=60)
-        self._supervisord_conf_path = getattr(self, "_supervisord_conf_path", "/etc/supervisor/conf.d/supervisord.conf")
+        self._supervisord_conf_path = getattr(
+            self, "_supervisord_conf_path", "/etc/supervisor/conf.d/supervisord.conf"
+        )
         self.interface_files_changed = False  # Track if interface files changed
         self.slim_mode = slim_mode  # True = no colcon build, False = full ROS2 build
 
@@ -74,22 +80,23 @@ class HotReloadHandler(FileSystemEventHandler):
 
         logger.debug(f"File modified: {path_str}")
 
-        if any(excluded in path_str for excluded in ['/install/', '/build/', '/log/', '/_gen/']):
+        if any(excluded in path_str for excluded in ["/install/", "/build/", "/log/", "/_gen/"]):
             logger.debug(f"🚫 Ignoring file in excluded directory: {path_str}")
             return
 
         # Ignore generated protobuf/grpc stubs by filename suffix
-        if file_path.suffix in ['.pyi'] or '_pb2' in file_path.stem or '_pb2_grpc' in file_path.stem:
+        if (
+            file_path.suffix in [".pyi"]
+            or "_pb2" in file_path.stem
+            or "_pb2_grpc" in file_path.stem
+        ):
             logger.debug(f"🚫 Ignoring generated protobuf file: {path_str}")
             return
 
         # Check if it's a Python file in the main package
         # Use exact path segment match (not substring) to avoid matching
         # v2_modulemanager_interfaces when package_name is v2_modulemanager
-        is_python_file = (
-            file_path.suffix == '.py' and
-            f'/src/{self.package_name}/' in path_str
-        )
+        is_python_file = file_path.suffix == ".py" and f"/src/{self.package_name}/" in path_str
 
         # Check if it's a ROS2 interface file (.srv, .msg, .action) in any package
         # Only monitor interface files in FULL mode
@@ -97,30 +104,32 @@ class HotReloadHandler(FileSystemEventHandler):
         is_config_file = False
         if not self.slim_mode:
             is_interface_file = (
-                file_path.suffix in ['.srv', '.msg', '.action'] and 
-                '/src/' in path_str and
-                any(iface_dir in path_str for iface_dir in ['/srv/', '/msg/', '/action/'])
+                file_path.suffix in [".srv", ".msg", ".action"]
+                and "/src/" in path_str
+                and any(iface_dir in path_str for iface_dir in ["/srv/", "/msg/", "/action/"])
             )
             # Also watch JSON config files inside interface packages
             # (e.g. vyra_com.meta.json) which are installed via colcon
             is_config_file = (
-                file_path.suffix == '.json' and
-                '/src/' in path_str and
-                '/config/' in path_str
+                file_path.suffix == ".json" and "/src/" in path_str and "/config/" in path_str
             )
 
             # Ignore interface/config file events for 60 seconds after build completes
             # This prevents loops from setup_interfaces.py modifying interface files
             # 60s because a colcon build takes ~50s and file events can arrive late
-            if (is_interface_file or is_config_file) and (time.time() - self.last_build_time < 60.0):
+            if (is_interface_file or is_config_file) and (
+                time.time() - self.last_build_time < 60.0
+            ):
                 return
 
         if is_python_file or is_interface_file or is_config_file:
             # Check for duplicate event (same file within 10 seconds)
             # This catches multiple save events from editors (save, auto-save, format-on-save)
             current_time = time.time()
-            if (self.last_modified_file == path_str and 
-                current_time - self.last_modified_time < 10.0):
+            if (
+                self.last_modified_file == path_str
+                and current_time - self.last_modified_time < 10.0
+            ):
                 return
 
             self.last_modified_file = path_str
@@ -145,20 +154,21 @@ class HotReloadHandler(FileSystemEventHandler):
         path_str = str(file_path)
 
         # Ignore install, build, log directories, and generated protobuf files
-        if any(excluded in path_str for excluded in ['/install/', '/build/', '/log/', '/_gen/']):
+        if any(excluded in path_str for excluded in ["/install/", "/build/", "/log/", "/_gen/"]):
             return
 
         # Ignore generated protobuf/grpc stubs by filename suffix
-        if file_path.suffix in ['.pyi'] or '_pb2' in file_path.stem or '_pb2_grpc' in file_path.stem:
+        if (
+            file_path.suffix in [".pyi"]
+            or "_pb2" in file_path.stem
+            or "_pb2_grpc" in file_path.stem
+        ):
             return
 
         # Check if it's a Python file in the main package
         # Use exact path segment match (not substring) to avoid matching
         # v2_modulemanager_interfaces when package_name is v2_modulemanager
-        is_python_file = (
-            file_path.suffix == '.py' and
-            f'/src/{self.package_name}/' in path_str
-        )
+        is_python_file = file_path.suffix == ".py" and f"/src/{self.package_name}/" in path_str
 
         # Check if it's a ROS2 interface file (.srv, .msg, .action) in any package
         # Only monitor interface files in FULL mode
@@ -166,18 +176,18 @@ class HotReloadHandler(FileSystemEventHandler):
         is_config_file = False
         if not self.slim_mode:
             is_interface_file = (
-                file_path.suffix in ['.srv', '.msg', '.action'] and 
-                '/src/' in path_str and
-                any(iface_dir in path_str for iface_dir in ['/srv/', '/msg/', '/action/'])
+                file_path.suffix in [".srv", ".msg", ".action"]
+                and "/src/" in path_str
+                and any(iface_dir in path_str for iface_dir in ["/srv/", "/msg/", "/action/"])
             )
             is_config_file = (
-                file_path.suffix == '.json' and
-                '/src/' in path_str and
-                '/config/' in path_str
+                file_path.suffix == ".json" and "/src/" in path_str and "/config/" in path_str
             )
 
             # Ignore interface/config file events for 60 seconds after build completes
-            if (is_interface_file or is_config_file) and (time.time() - self.last_build_time < 60.0):
+            if (is_interface_file or is_config_file) and (
+                time.time() - self.last_build_time < 60.0
+            ):
                 return
 
         if is_python_file or is_interface_file or is_config_file:
@@ -292,22 +302,18 @@ class HotReloadHandler(FileSystemEventHandler):
             # empty and restores the stale image backup, discarding source fixes.
             # Deleting only the build dir + egg-info forces pip to reinstall from
             # source without ever leaving the install tree in a broken state.
-            packages_to_clean = [
-                self.package_name,
-                f'{self.package_name}_interfaces'
-            ]
+            packages_to_clean = [self.package_name, f"{self.package_name}_interfaces"]
 
             for pkg in packages_to_clean:
                 # Remove stale distribution metadata (egg-info / dist-info) from
                 # the install tree so pip treats the package as not yet installed
                 # and performs a full file copy.  Colcon may generate either
                 # format depending on the setuptools version.
-                site_pkgs = (
-                    self.workspace_path / "install" / pkg
-                    / "lib"
-                )
+                site_pkgs = self.workspace_path / "install" / pkg / "lib"
                 if site_pkgs.exists():
-                    for meta_dir in list(site_pkgs.rglob(f"{pkg}-*.egg-info")) + list(site_pkgs.rglob(f"{pkg}-*.dist-info")):
+                    for meta_dir in list(site_pkgs.rglob(f"{pkg}-*.egg-info")) + list(
+                        site_pkgs.rglob(f"{pkg}-*.dist-info")
+                    ):
                         logger.info(f"🧹 Removing dist metadata: {meta_dir}")
                         shutil.rmtree(meta_dir)
 
@@ -325,10 +331,7 @@ class HotReloadHandler(FileSystemEventHandler):
                 "colcon --log-base log/ros2 build --cmake-args -DCMAKE_BUILD_TYPE=Release"
             )
             result = subprocess.run(
-                ["bash", "-c", build_cmd],
-                cwd=self.workspace_path,
-                capture_output=True,
-                text=True
+                ["bash", "-c", build_cmd], cwd=self.workspace_path, capture_output=True, text=True
             )
 
             if result.returncode != 0:
@@ -363,9 +366,10 @@ class HotReloadHandler(FileSystemEventHandler):
                         break
             if not instance_id:
                 import socket
+
                 hostname = socket.gethostname()
                 prefix = f"{self.package_name}_"
-                instance_id = hostname[len(prefix):] if hostname.startswith(prefix) else hostname
+                instance_id = hostname[len(prefix) :] if hostname.startswith(prefix) else hostname
 
             interface_dir_name = f"{self.package_name}_{instance_id}_interfaces"
             nfs_module_dir = Path(nfs_volume) / interface_dir_name
@@ -384,9 +388,9 @@ class HotReloadHandler(FileSystemEventHandler):
                 try:
                     if shutil.which("rsync"):
                         subprocess.run(
-                            ["rsync", "-a", "--delete",
-                             f"{iface_install}/", f"{nfs_ros_dir}/"],
-                            capture_output=True, timeout=60
+                            ["rsync", "-a", "--delete", f"{iface_install}/", f"{nfs_ros_dir}/"],
+                            capture_output=True,
+                            timeout=60,
                         )
                     else:
                         if nfs_ros_dir.exists():
@@ -402,9 +406,9 @@ class HotReloadHandler(FileSystemEventHandler):
                     try:
                         if shutil.which("rsync"):
                             subprocess.run(
-                                ["rsync", "-a", "--delete",
-                                 f"{config_src}/", f"{nfs_config_dir}/"],
-                                capture_output=True, timeout=30
+                                ["rsync", "-a", "--delete", f"{config_src}/", f"{nfs_config_dir}/"],
+                                capture_output=True,
+                                timeout=30,
                             )
                         else:
                             for f in config_src.iterdir():
@@ -418,16 +422,18 @@ class HotReloadHandler(FileSystemEventHandler):
             # 3. Raw interface definitions (msg / srv / action) → NFS sub-directories
             iface_src_dir = self.workspace_path / "src" / f"{self.package_name}_interfaces"
             for sub, nfs_sub in [
-                ("msg", nfs_msg_dir), ("srv", nfs_srv_dir), ("action", nfs_action_dir)
+                ("msg", nfs_msg_dir),
+                ("srv", nfs_srv_dir),
+                ("action", nfs_action_dir),
             ]:
                 src_sub = iface_src_dir / sub
                 if src_sub.is_dir():
                     try:
                         if shutil.which("rsync"):
                             subprocess.run(
-                                ["rsync", "-a", "--delete",
-                                 f"{src_sub}/", f"{nfs_sub}/"],
-                                capture_output=True, timeout=30
+                                ["rsync", "-a", "--delete", f"{src_sub}/", f"{nfs_sub}/"],
+                                capture_output=True,
+                                timeout=30,
                             )
                         else:
                             if nfs_sub.exists():
@@ -462,9 +468,7 @@ class HotReloadHandler(FileSystemEventHandler):
             for conf_path in conf_paths:
                 try:
                     result = subprocess.run(
-                        ["supervisorctl", "-c", conf_path, "status"],
-                        capture_output=True,
-                        timeout=5
+                        ["supervisorctl", "-c", conf_path, "status"], capture_output=True, timeout=5
                     )
                     # Exit code 0 = all processes running
                     # Exit code 3 = some processes stopped (e.g., nginx) - still available!
@@ -488,20 +492,21 @@ class HotReloadHandler(FileSystemEventHandler):
 
             wait_time = min(3.0, remaining)
             logger.debug(
-                f"⏳ Waiting for supervisord (attempt {attempt}, "
-                f"{remaining:.0f}s remaining)..."
+                f"⏳ Waiting for supervisord (attempt {attempt}, " f"{remaining:.0f}s remaining)..."
             )
             time.sleep(wait_time)
 
     def _supervisorctl(self, action: str, program: str) -> bool:
         """Execute supervisorctl command with explicit config file"""
-        conf_path = getattr(self, "_supervisord_conf_path", "/etc/supervisor/conf.d/supervisord.conf")
+        conf_path = getattr(
+            self, "_supervisord_conf_path", "/etc/supervisor/conf.d/supervisord.conf"
+        )
         try:
             result = subprocess.run(
                 ["supervisorctl", "-c", conf_path, action, program],
                 capture_output=True,
                 text=True,
-                timeout=30
+                timeout=30,
             )
 
             if result.returncode != 0:
@@ -529,7 +534,7 @@ class HotReloadHandler(FileSystemEventHandler):
                 cwd=self.workspace_path,
                 capture_output=True,
                 text=True,
-                timeout=30
+                timeout=30,
             )
 
             if result.returncode == 0:
@@ -548,21 +553,17 @@ class HotReloadHandler(FileSystemEventHandler):
                 ["pgrep", "-f", f"{self.package_name}/core"],
                 capture_output=True,
                 text=True,
-                timeout=5
+                timeout=5,
             )
 
             if result.returncode == 0 and result.stdout.strip():
-                pids = result.stdout.strip().split('\n')
+                pids = result.stdout.strip().split("\n")
                 logger.info(f"🔍 Found {len(pids)} remaining processes to clean up")
 
                 for pid in pids:
                     try:
                         # Send SIGTERM first (graceful)
-                        subprocess.run(
-                            ["kill", "-TERM", pid],
-                            capture_output=True,
-                            timeout=2
-                        )
+                        subprocess.run(["kill", "-TERM", pid], capture_output=True, timeout=2)
                         logger.debug(f"Sent SIGTERM to PID {pid}")
                     except Exception as e:
                         logger.warning(f"Failed to kill PID {pid}: {e}")
@@ -575,20 +576,18 @@ class HotReloadHandler(FileSystemEventHandler):
                     ["pgrep", "-f", f"{self.package_name}/core"],
                     capture_output=True,
                     text=True,
-                    timeout=5
+                    timeout=5,
                 )
 
                 if result.returncode == 0 and result.stdout.strip():
-                    remaining_pids = result.stdout.strip().split('\n')
-                    logger.warning(f"⚠️ {len(remaining_pids)} processes still alive, force killing...")
+                    remaining_pids = result.stdout.strip().split("\n")
+                    logger.warning(
+                        f"⚠️ {len(remaining_pids)} processes still alive, force killing..."
+                    )
 
                     for pid in remaining_pids:
                         try:
-                            subprocess.run(
-                                ["kill", "-KILL", pid],
-                                capture_output=True,
-                                timeout=2
-                            )
+                            subprocess.run(["kill", "-KILL", pid], capture_output=True, timeout=2)
                             logger.debug(f"Sent SIGKILL to PID {pid}")
                         except Exception as e:
                             logger.warning(f"Failed to force kill PID {pid}: {e}")
@@ -609,10 +608,22 @@ class HotReloadHandler(FileSystemEventHandler):
             package_path = self.workspace_path / "src" / self.package_name
 
             result = subprocess.run(
-                ["find", str(package_path), "-type", "d", "-name", "__pycache__", "-exec", "rm", "-rf", "{}", "+"],
+                [
+                    "find",
+                    str(package_path),
+                    "-type",
+                    "d",
+                    "-name",
+                    "__pycache__",
+                    "-exec",
+                    "rm",
+                    "-rf",
+                    "{}",
+                    "+",
+                ],
                 capture_output=True,
                 text=True,
-                timeout=10
+                timeout=10,
             )
 
             if result.returncode == 0:
@@ -635,7 +646,7 @@ class HotReloadHandler(FileSystemEventHandler):
                 shell=True,
                 capture_output=True,
                 text=True,
-                timeout=5
+                timeout=5,
             )
 
             if result.returncode == 0:
@@ -654,7 +665,7 @@ class HotReloadHandler(FileSystemEventHandler):
                 self.workspace_path / "log" / "core" / "errors.log",
             ]:
                 try:
-                    with open(log_file, 'a') as lf:
+                    with open(log_file, "a") as lf:
                         lf.write(separator)
                 except Exception as fe:
                     logger.debug(f"Could not write separator to {log_file}: {fe}")
@@ -679,18 +690,22 @@ class HotReloadHandler(FileSystemEventHandler):
                 if not src_dir.is_dir():
                     continue
                 # Valid ROS2 interface names start with an uppercase letter
-                src_count = len([
-                    f for f in src_dir.glob(f"*.{iface_type}")
-                    if f.stem[:1].isupper()
-                ])
+                src_count = len(
+                    [f for f in src_dir.glob(f"*.{iface_type}") if f.stem[:1].isupper()]
+                )
                 installed_dir = (
-                    iface_install / "lib" / python_ver / "site-packages"
-                    / f"{self.package_name}_interfaces" / iface_type
+                    iface_install
+                    / "lib"
+                    / python_ver
+                    / "site-packages"
+                    / f"{self.package_name}_interfaces"
+                    / iface_type
                 )
                 # Compiled Python modules are named _snake_case.py (exclude __init__.py)
                 installed_count = (
                     len([f for f in installed_dir.glob("_*.py") if f.name != "__init__.py"])
-                    if installed_dir.is_dir() else 0
+                    if installed_dir.is_dir()
+                    else 0
                 )
                 if src_count != installed_count:
                     logger.info(
@@ -707,7 +722,9 @@ class HotReloadHandler(FileSystemEventHandler):
                     iface_install / "share" / f"{self.package_name}_interfaces" / "config"
                 )
                 src_json = len(list(src_config.glob("*.json"))) if src_config.is_dir() else 0
-                inst_json = len(list(install_config.glob("*.json"))) if install_config.is_dir() else 0
+                inst_json = (
+                    len(list(install_config.glob("*.json"))) if install_config.is_dir() else 0
+                )
                 if src_json != inst_json:
                     logger.info(
                         f"🔍 Startup sync: config/ "
@@ -725,8 +742,12 @@ class HotReloadHandler(FileSystemEventHandler):
                 # spurious rebuild because colcon never writes it to install/.
                 # Instead, verify that the package directory exists in site-packages.
                 site_pkgs = (
-                    self.workspace_path / "install" / self.package_name
-                    / "lib" / python_ver / "site-packages"
+                    self.workspace_path
+                    / "install"
+                    / self.package_name
+                    / "lib"
+                    / python_ver
+                    / "site-packages"
                 )
                 install_pkg_dir = site_pkgs / self.package_name
                 if not install_pkg_dir.is_dir():
@@ -739,6 +760,7 @@ class HotReloadHandler(FileSystemEventHandler):
             if rebuild_needed:
                 self.interface_files_changed = True
                 import threading
+
                 threading.Timer(10.0, self._schedule_rebuild).start()
                 logger.info("⏳ Initial rebuild scheduled in 10 s (interface files out of sync)")
             else:
@@ -761,8 +783,8 @@ def main():
     """Main entry point"""
     logging.basicConfig(
         level=logging.INFO,
-        format='[%(asctime)s] %(levelname)s: %(message)s',
-        datefmt='%Y-%m-%d %H:%M:%S'
+        format="[%(asctime)s] %(levelname)s: %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
     )
 
     # Get configuration from environment or arguments
@@ -797,9 +819,12 @@ def main():
 
     # Create event handler and observer
     event_handler = HotReloadHandler(
-        workspace_path, package_name, node_name, 
+        workspace_path,
+        package_name,
+        node_name,
         supervisord_program=supervisord_program,
-        slim_mode=slim_mode)
+        slim_mode=slim_mode,
+    )
 
     observer = Observer()
     observer.schedule(event_handler, watch_path, recursive=True)

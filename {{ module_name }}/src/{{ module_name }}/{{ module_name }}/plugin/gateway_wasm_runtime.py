@@ -43,6 +43,7 @@ _INSTANCE_NAME_RE = re.compile(r"^(?P<name>.+)_(?P<id>[0-9a-fA-F]{32})$")
 
 try:
     from wasmtime import Store, Module as WasmModule, Engine  # type: ignore[import]
+
     _WASMTIME_AVAILABLE = True
 except ImportError:
     _WASMTIME_AVAILABLE = False
@@ -51,6 +52,7 @@ except ImportError:
 # ---------------------------------------------------------------------------
 # GatewayWasmRuntime
 # ---------------------------------------------------------------------------
+
 
 class GatewayWasmRuntime(PluginRuntime):
     """
@@ -118,12 +120,11 @@ class GatewayWasmRuntime(PluginRuntime):
                 else:
                     logger.warning(
                         "[%s] WASM does not export '%s' (declared in manifest)",
-                        self.plugin_id, fn_name,
+                        self.plugin_id,
+                        fn_name,
                     )
         elif not self._service_exports:
-            raise FileNotFoundError(
-                f"[{self.plugin_id}] WASM file not found: {wasm_path}"
-            )
+            raise FileNotFoundError(f"[{self.plugin_id}] WASM file not found: {wasm_path}")
         else:
             logger.info(
                 "[%s] starting in service-export mode (no local logic.wasm)",
@@ -170,20 +171,14 @@ class GatewayWasmRuntime(PluginRuntime):
             try:
                 with manifest_path.open() as fh:
                     data = yaml.safe_load(fh)
-                exports = (
-                    data.get("entry_points", {})
-                        .get("backend", {})
-                        .get("exports", [])
-                )
+                exports = data.get("entry_points", {}).get("backend", {}).get("exports", [])
                 for export in exports:
                     fn_name = export.get("name", "")
                     if fn_name:
                         self._exports_meta[fn_name] = export.get("args", [])
 
                 service_exports = (
-                    data.get("entry_points", {})
-                        .get("backend", {})
-                        .get("service_exports", [])
+                    data.get("entry_points", {}).get("backend", {}).get("service_exports", [])
                 )
                 for export in service_exports:
                     fn_name = export.get("name", "")
@@ -208,7 +203,8 @@ class GatewayWasmRuntime(PluginRuntime):
                         self._exports_meta[fn_name] = export.get("args", [])
                 logger.info(
                     "📋 [%s] metadata.json loaded (fallback) | exports=%s",
-                    self.plugin_id, list(self._exports_meta.keys()),
+                    self.plugin_id,
+                    list(self._exports_meta.keys()),
                 )
                 return
             except Exception as exc:
@@ -216,12 +212,11 @@ class GatewayWasmRuntime(PluginRuntime):
 
         logger.warning(
             "[%s] No manifest.yaml or metadata.json found in %s",
-            self.plugin_id, plugin_dir,
+            self.plugin_id,
+            plugin_dir,
         )
 
-    async def _dispatch_wasm(
-        self, function_name: str, data: dict[str, Any]
-    ) -> dict[str, Any]:
+    async def _dispatch_wasm(self, function_name: str, data: dict[str, Any]) -> dict[str, Any]:
         """Map data keys to i32 arguments and call the WASM function."""
         if function_name == "ping":
             return {"status": "ok", "plugin_id": self.plugin_id, "runtime": "gateway_wasm"}
@@ -231,16 +226,16 @@ class GatewayWasmRuntime(PluginRuntime):
 
         if function_name not in self._exports_meta:
             raise PluginCallError(
-                self.plugin_id, function_name,
+                self.plugin_id,
+                function_name,
                 f"Unknown function '{function_name}'. "
-                f"Declared exports: {list(self._exports_meta.keys())}"
+                f"Declared exports: {list(self._exports_meta.keys())}",
             )
 
         fn = self._exports.get(function_name)
         if fn is None:
             raise PluginCallError(
-                self.plugin_id, function_name,
-                f"WASM function '{function_name}' not available"
+                self.plugin_id, function_name, f"WASM function '{function_name}' not available"
             )
 
         arg_defs = self._exports_meta[function_name]
@@ -314,6 +309,7 @@ class GatewayWasmRuntime(PluginRuntime):
 # GatewayWasmRuntimePool
 # ---------------------------------------------------------------------------
 
+
 class GatewayWasmRuntimePool:
     """
     Manages GatewayWasmRuntime and RemoteRuntimeProxy instances — one per plugin_id.
@@ -344,7 +340,8 @@ class GatewayWasmRuntimePool:
             if rt is not None:
                 if not isinstance(rt, GatewayWasmRuntime):
                     raise PluginCallError(
-                        plugin_id, "<start>",
+                        plugin_id,
+                        "<start>",
                         f"Plugin '{plugin_id}' is mapped to a RemoteRuntimeProxy, "
                         "not a local GatewayWasmRuntime",
                     )
@@ -375,7 +372,8 @@ class GatewayWasmRuntimePool:
             if rt is not None:
                 if not isinstance(rt, RemoteRuntimeProxy):
                     raise PluginCallError(
-                        plugin_id, "<proxy>",
+                        plugin_id,
+                        "<proxy>",
                         f"Plugin '{plugin_id}' is already mapped to a local GatewayWasmRuntime",
                     )
                 return rt
@@ -384,7 +382,8 @@ class GatewayWasmRuntimePool:
             self._runtimes[plugin_id] = proxy  # type: ignore[assignment]
             logger.info(
                 "✅ GatewayWasmRuntimePool: '%s' started (remote → %s)",
-                plugin_id, module_name,
+                plugin_id,
+                module_name,
             )
 
         return self._runtimes[plugin_id]  # type: ignore[return-value]
@@ -415,7 +414,8 @@ class GatewayWasmRuntimePool:
             rt = await self.get_or_start_runtime(plugin_id, nfs_wasm_path, initial_state)
         else:
             raise PluginCallError(
-                plugin_id, function_name,
+                plugin_id,
+                function_name,
                 f"Plugin '{plugin_id}' not active and neither nfs_wasm_path nor "
                 "remote_module_name was provided",
             )
@@ -438,6 +438,7 @@ class GatewayWasmRuntimePool:
 # ---------------------------------------------------------------------------
 # RemoteRuntimeProxy
 # ---------------------------------------------------------------------------
+
 
 class RemoteRuntimeProxy(PluginRuntime):
     """
@@ -496,7 +497,8 @@ class RemoteRuntimeProxy(PluginRuntime):
         except Exception as exc:
             logger.warning(
                 "⚠️  RemoteRuntimeProxy [%s] client could not be started: %s",
-                self.plugin_id, exc,
+                self.plugin_id,
+                exc,
             )
 
     async def stop(self) -> None:
@@ -513,15 +515,15 @@ class RemoteRuntimeProxy(PluginRuntime):
     async def call(self, function_name: str, data: dict[str, Any]) -> dict[str, Any]:
         """Forward the call to the remote ``ui_function_call`` Zenoh service."""
         if not self._started or self._client is None:
-            raise PluginCallError(
-                self.plugin_id, function_name, "RemoteRuntimeProxy not started"
-            )
+            raise PluginCallError(self.plugin_id, function_name, "RemoteRuntimeProxy not started")
         try:
-            result: dict[str, Any] | None = await self._client.call({
-                "plugin_id":     self.plugin_id,
-                "function_name": function_name,
-                "data":          data,
-            })
+            result: dict[str, Any] | None = await self._client.call(
+                {
+                    "plugin_id": self.plugin_id,
+                    "function_name": function_name,
+                    "data": data,
+                }
+            )
             if result is None:
                 raise PluginCallError(
                     self.plugin_id,
@@ -536,4 +538,6 @@ class RemoteRuntimeProxy(PluginRuntime):
 
     async def on_event(self, event_name: str, data: dict[str, Any]) -> None:
         """No-op: remote events are handled by the remote module."""
-        logger.debug("RemoteRuntimeProxy [%s] on_event(%s) — not forwarded", self.plugin_id, event_name)
+        logger.debug(
+            "RemoteRuntimeProxy [%s] on_event(%s) — not forwarded", self.plugin_id, event_name
+        )

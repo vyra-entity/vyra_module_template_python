@@ -46,8 +46,7 @@ flask = "^3.0.0"
 gunicorn = "^23.0.0"
 
 # SLIM mode: Zenoh communication (optional, installed when VYRA_SLIM=true)
-eclipse-zenoh = {version = "^0.11.0", optional = true}
-zenoh-python = {version = "^0.11.0", optional = true}
+eclipse-zenoh = {version = "^1.0.0", optional = true}
 
 # ROS2 mode: ROS2 dependencies (optional, installed when VYRA_SLIM=false)
 # Note: ROS2 packages typically installed via apt, not pip
@@ -76,8 +75,8 @@ ipython = "^8.20.0"
 ipdb = "^0.13.13"
 
 [tool.poetry.extras]
-slim = ["eclipse-zenoh", "zenoh-python"]
-all = ["eclipse-zenoh", "zenoh-python"]
+slim = ["eclipse-zenoh"]
+all = ["eclipse-zenoh"]
 
 [build-system]
 requires = ["poetry-core>=2.0.0,<3.0.0"]

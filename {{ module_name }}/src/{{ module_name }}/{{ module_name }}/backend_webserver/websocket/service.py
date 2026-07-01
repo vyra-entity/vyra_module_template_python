@@ -79,11 +79,13 @@ class ConnectionManager:
     async def notify_operation_update(self, operation_id: str, operation_data: dict) -> None:
         if operation_id not in self.operation_subscriptions:
             return
-        message = json.dumps({
-            "type": "operation_update",
-            "operation_id": operation_id,
-            "data": operation_data,
-        })
+        message = json.dumps(
+            {
+                "type": "operation_update",
+                "operation_id": operation_id,
+                "data": operation_data,
+            }
+        )
         for websocket in list(self.operation_subscriptions[operation_id]):
             try:
                 await websocket.send_text(message)

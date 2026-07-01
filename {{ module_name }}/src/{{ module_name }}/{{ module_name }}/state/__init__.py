@@ -50,9 +50,11 @@ from .state_types import (
 # logging_config.py etc. – packages that require a running ROS2 environment.
 # Using __getattr__ prevents import errors in unit-test environments.
 
+
 def __getattr__(name: str):  # noqa: N807
     if name in ("StateManager"):
         from .state_manager import StateManager  # noqa: PLC0415
+
         globals()["StateManager"] = StateManager
         return globals()[name]
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
